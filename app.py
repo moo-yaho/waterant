@@ -291,13 +291,24 @@ with tab1:
 
     st.markdown("---")
 
-    if st.button("🚀 분석 실행", type="primary"):
-        with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 분석 중입니다..."):
-            target_market = "KRX" if "전체" in market_type else market_type
-            df_krx = fdr.StockListing(target_market)
+# [탭 1] 분석 실행 버튼 클릭 내부
+if st.button("🚀 분석 실행", type="primary"):
+    with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 분석 중입니다..."):
+        target_market = "KRX" if "전체" in market_type else market_type
+        df_krx = fdr.StockListing(target_market)
 
-            if top_n > 0:
-                df_krx = df_krx.head(top_n)
+        # 🚫 1. 코넥스(KONEX) 시장 사전 필터링 (방법 2)
+        if "Market" in df_krx.columns:
+            df_krx = df_krx[df_krx["Market"] != "KONEX"]
+
+        # 🚫 2. 스팩(SPAC) 및 우선주 제거 (추가 권장사항)
+        # 필요 시 아래 주석을 해제하면 스팩주나 우선주도 함께 걸러낼 수 있습니다.
+        # 스팩(SPAC) 및 우선주(우, 우A, 우B 등)를 모두 제거하는 필터
+        df_krx = df_krx[~df_krx['Name'].str.contains('스팩|SPAC|우$|우A$|우B$|우C$', case=False, na=False)]
+
+        # 3. 상위 N개 제한 적용
+        if top_n > 0:
+            df_krx = df_krx.head(top_n)
 
             st.session_state["benchmark_code"] = benchmark_code
             st.session_state["selected_idx_name"] = selected_idx_name
