@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="개인 트레이딩 분석 & 일지 툴", page_icon="📈", layout="wide"
 )
 
-st.title("📈 개인 주도주 분석 & 매매 일지 시스템")
+st.title("📈 주도주 분석 & 매매 일지 시스템")
 st.markdown(
     "시장 지수 대비 강력한 주도주를 발굴하고, 차트와 함께 매매 복기를 기록하는 나만의 프라이빗 툴입니다."
 )
