@@ -408,7 +408,7 @@ with tab1:
         filtered_df = df_res[
             (df_res["상대강도(%)"] >= min_rs)
             & (df_res["거래대금(원)"] >= min_val)
-            & (df_res["현재가"] >= min_price]
+            & (df_res["현재가"] >= min_price)
         ]
 
         # 정렬 옵션
