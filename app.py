@@ -151,9 +151,9 @@ def process_single_stock(row, target_market, benchmark_code, df_single_bench, se
     return {
         "시장": mkt,
         "종목명": name,
-        "시가총액(억)": f"{marcap_eok:,.0f}억" if marcap_eok > 0 else "-",
+        "시가총액(억)": f"{marcap_eok:,.0f}" if marcap_eok > 0 else "-",
         "현재가(원)": f"{s_curr:,.0f}",
-        "거래대금(억)": f"{trading_val_eok:,.0f}억",
+        "거래대금(억)": f"{trading_val_eok:,.0f}",
         "종목수익률(%)": round(stock_growth, 2),
         "거래량 비율(%)": f"{vol_ratio:.1f}%",
         "상대강도(%)": round(rel_strength, 2),
@@ -220,21 +220,21 @@ with vr_col2:
 
 # --- 4. 메인 탭 구성 ---
 tab1, tab2, tab3 = st.tabs(
-    ["📊 상대강도 스크리닝", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
+    ["📊 상대강도 분석", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
 )
 
 # -------------------------------------------------------------------------
-# [탭 1] 상대강도 스크리닝
+# [탭 1] 상대강도 분석
 # -------------------------------------------------------------------------
 with tab1:
-    st.subheader("1. 시장 대비 상대강도 스크리닝")
+    st.subheader("1. 시장 대비 상대강도 분석")
 
     st.markdown("##### 📅 1구역: 날짜 및 기간 설정")
     d_col1, d_col2, d_col3 = st.columns(3)
 
     with d_col1:
         analysis_date = st.date_input(
-            "분석일 (기본값: 오늘)", value=datetime.today(), help="스크리닝의 종료 기준 날짜입니다."
+            "분석일 (기본값: 오늘)", value=datetime.today(), help="분석의 종료 기준 날짜입니다."
         )
 
     with d_col2:
@@ -282,7 +282,7 @@ with tab1:
     st.markdown("---")
 
     if st.button("🚀 분석 실행", type="primary"):
-        with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 스크리닝 중입니다..."):
+        with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 분석 중입니다..."):
             target_market = "KRX" if "전체" in market_type else market_type
             df_krx = fdr.StockListing(target_market)
 
@@ -340,7 +340,7 @@ with tab1:
 
     if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
-        st.subheader("📋 스크리닝 결과 목록")
+        st.subheader("📋 분석 결과 목록")
         st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
         display_cols = [col for col in df_res.columns if col != "_code"]
         st.dataframe(df_res[display_cols], use_container_width=True)
