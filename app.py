@@ -63,7 +63,7 @@ with col_rs1:
 with col_rs2:
     max_rs = st.number_input("최대 RS(%)", min_value=-100.0, value=0.0, step=1.0)
 
-st.sidebar.subheader("📉 거래량 급감(눌림목) 필터")
+st.sidebar.subheader("📉 거래량 급감 필터")
 vol_lookback_days = st.sidebar.number_input("과거 최고 거래량 조회 기간(일)", min_value=2, value=5, step=1)
 
 col_vol_ratio1, col_vol_ratio2 = st.sidebar.columns(2)
@@ -89,7 +89,7 @@ def get_start_date(num, unit):
 
 start_date = get_start_date(period_num, period_unit)
 
-if st.button("🚀 스크리닝 실행", type="primary"):
+if st.button("🚀 분", type="primary"):
     with st.spinner("시장 데이터 및 종목별 상대강도를 분석 중입니다..."):
         try:
             # 1. 기준 지수 데이터 수집
