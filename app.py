@@ -183,7 +183,7 @@ def process_single_stock(row, target_market, benchmark_code, bench_dict, search_
 st.sidebar.header("🛠️ 상세 필터")
 
 top_n = st.sidebar.number_input(
-    "상위 N개 분석 제한 (시총 기준)", min_value=0, value=300, step=50
+    "상위 N개 분석 제한 (시총 기준)", min_value=0, value=0, step=50
 )
 if top_n > 0:
     st.sidebar.caption(f"💡 설정값: 시총 상위 {top_n:,}개 종목만 분석")
