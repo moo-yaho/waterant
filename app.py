@@ -192,7 +192,7 @@ with mc_col1:
 with mc_col2:
     mc_max = st.number_input("최대", min_value=0, value=0, step=100, key="mc_max")
 if mc_min > 0 or mc_max > 0:
-    st.sidebar.caption(f"💡 범위: {mc_min:,}억 원 ~ {mc_max:, if mc_max > 0 else '제한없음'}억 원")
+    st.sidebar.caption(f"💡 범위: {mc_min:,}억 원 ~ {f'{mc_max:,}' if mc_max > 0 else '제한없음'}억 원")
 
 st.sidebar.subheader("현재가 (원)")
 p_col1, p_col2 = st.sidebar.columns(2)
@@ -201,7 +201,7 @@ with p_col1:
 with p_col2:
     price_max = st.number_input("최대", min_value=0, value=0, step=1000, key="p_max")
 if price_min > 0 or price_max > 0:
-    st.sidebar.caption(f"💡 범위: {price_min:,}원 ~ {price_max:, if price_max > 0 else '제한없음'}원")
+    st.sidebar.caption(f"💡 범위: {price_min:,}원 ~ {f'{price_max:,}' if price_max > 0 else '제한없음'}원")
 
 st.sidebar.subheader("당일 거래대금 (억 원)")
 val_col1, val_col2 = st.sidebar.columns(2)
@@ -210,7 +210,7 @@ with val_col1:
 with val_col2:
     val_max = st.number_input("최대", min_value=0, value=0, step=10, key="v_max")
 if val_min > 0 or val_max > 0:
-    st.sidebar.caption(f"💡 범위: {val_min:,}억 원 ~ {val_max:, if val_max > 0 else '제한없음'}억 원")
+    st.sidebar.caption(f"💡 범위: {val_min:,}억 원 ~ {f'{val_max:,}' if val_max > 0 else '제한없음'}억 원")
 
 st.sidebar.subheader("상대강도 RS (%)")
 rs_col1, rs_col2 = st.sidebar.columns(2)
