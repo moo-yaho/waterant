@@ -57,19 +57,62 @@ def save_notes(notes):
         json.dump(notes, f, ensure_ascii=False, indent=4)
 
 
-# --- 4. 탭 구성 ---
+# --- 4. 사이드바 (상세 필터 설정) ---
+st.sidebar.header("🛠️ 상세 필터")
+
+top_n = st.sidebar.number_input(
+    "상위 N개 분석 제한", min_value=0, value=300, step=50
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("시가총액 (억 원)")
+mc_col1, mc_col2 = st.sidebar.columns(2)
+with mc_col1:
+    mc_min = st.number_input("최소", min_value=0, value=0, step=100, key="mc_min")
+with mc_col2:
+    mc_max = st.number_input("최대", min_value=0, value=0, step=100, key="mc_max")
+
+st.sidebar.subheader("현재가 (원)")
+p_col1, p_col2 = st.sidebar.columns(2)
+with p_col1:
+    price_min = st.number_input("최소", min_value=0, value=0, step=500, key="p_min")
+with p_col2:
+    price_max = st.number_input("최대", min_value=0, value=0, step=1000, key="p_max")
+
+st.sidebar.subheader("당일 거래대금 (억 원)")
+val_col1, val_col2 = st.sidebar.columns(2)
+with val_col1:
+    val_min = st.number_input("최소", min_value=0, value=0, step=10, key="v_min")
+with val_col2:
+    val_max = st.number_input("최대", min_value=0, value=0, step=10, key="v_max")
+
+st.sidebar.subheader("상대강도 RS (%)")
+rs_col1, rs_col2 = st.sidebar.columns(2)
+with rs_col1:
+    rs_min = st.number_input("최소", value=0.0, step=1.0, key="rs_min")
+with rs_col2:
+    rs_max = st.number_input("최대", value=0.0, step=1.0, key="rs_max")
+
+st.sidebar.subheader("거래량 비율 (%)")
+vr_col1, vr_col2 = st.sidebar.columns(2)
+with vr_col1:
+    vol_ratio_min = st.number_input("최소", value=0.0, step=5.0, key="vr_min")
+with vr_col2:
+    vol_ratio_max = st.number_input("최대", value=0.0, step=5.0, key="vr_max")
+
+
+# --- 5. 메인 탭 구성 ---
 tab1, tab2, tab3 = st.tabs(
     ["📊 상대강도 스크리닝", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
 )
 
 # -------------------------------------------------------------------------
-# [탭 1] 상대강도 스크리닝 (분석 및 상세 필터)
+# [탭 1] 상대강도 스크리닝
 # -------------------------------------------------------------------------
 with tab1:
     st.subheader("1. 시장 대비 상대강도 스크리닝")
 
-    # --- ① 기본 설정 패널 ---
-    st.markdown("##### ⚙️ 기본 설정")
+    # 기본 설정 패널
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -106,50 +149,14 @@ with tab1:
         delta_days = period_num
     elif "주 전" in period_unit:
         delta_days = period_num * 7
-    else:  # 개월 전
+    else:
         delta_days = period_num * 30
 
     start_date = (today - timedelta(days=delta_days)).strftime("%Y-%m-%d")
 
-    # --- ② 상세 필터 패널 ---
-    st.markdown("---")
-    st.markdown("##### 🛠️ 상세 필터 설정 (미입력/0 입력 시 제한 없음)")
-
-    f_col1, f_col2, f_col3 = st.columns(3)
-    with f_col1:
-        top_n = st.number_input(
-            "상위 N개 분석 제한 (시총 기준)", min_value=0, value=300, step=50, help="0 입력 시 대상 시장 전체 분석"
-        )
-    with f_col2:
-        mc_min = st.number_input("시가총액 최소 (억 원)", min_value=0, value=0, step=100)
-    with f_col3:
-        mc_max = st.number_input("시가총액 최대 (억 원)", min_value=0, value=0, step=100)
-
-    f_col4, f_col5, f_col6 = st.columns(3)
-    with f_col4:
-        price_min = st.number_input("현재가 최소 (원)", min_value=0, value=0, step=500)
-    with f_col5:
-        price_max = st.number_input("현재가 최대 (원)", min_value=0, value=0, step=1000)
-    with f_col6:
-        val_min = st.number_input("당일 거래대금 최소 (억 원)", min_value=0, value=0, step=10)
-
-    f_col7, f_col8, f_col9 = st.columns(3)
-    with f_col7:
-        val_max = st.number_input("당일 거래대금 최대 (억 원)", min_value=0, value=0, step=10)
-    with f_col8:
-        rs_min = st.number_input("상대강도(RS) 최소 (%)", value=0.0, step=1.0)
-    with f_col9:
-        rs_max = st.number_input("상대강도(RS) 최대 (%)", value=0.0, step=1.0)
-
-    f_col10, f_col11 = st.columns(2)
-    with f_col10:
-        vol_ratio_min = st.number_input("최고 거래량 대비 당일 거래량 비율 최소 (%)", value=0.0, step=5.0)
-    with f_col11:
-        vol_ratio_max = st.number_input("최고 거래량 대비 당일 거래량 비율 최대 (%)", value=0.0, step=5.0)
-
     st.markdown("---")
 
-    # --- ③ 스크리닝 실행 ---
+    # 분석 실행
     if st.button("🚀 분석 실행", type="primary"):
         with st.spinner("시장 데이터와 종목을 분석 중입니다... 잠시만 기다려주세요."):
             df_bench = get_market_data(benchmark_code, start_date)
@@ -163,7 +170,6 @@ with tab1:
                 target_market = "KRX" if "전체" in market_type else market_type
                 df_krx = fdr.StockListing(target_market)
 
-                # 상위 N개 분석 제한 처리
                 if top_n > 0:
                     df_krx = df_krx.head(top_n)
 
@@ -180,7 +186,7 @@ with tab1:
                         code = row["Code"]
                         name = row["Name"]
                         mkt = row.get("Market", target_market)
-                        marcap = row.get("Marcap", 0)  # 시가총액 (원 단위)
+                        marcap = row.get("Marcap", 0)
 
                         df_stock = get_market_data(code, start_date)
 
@@ -191,24 +197,20 @@ with tab1:
                                 s_curr = df_s_filtered["Close"].iloc[-1]
                                 stock_growth = ((s_curr / s_base) - 1.0) * 100.0 if s_base > 0 else 0.0
 
-                                # 상대강도 계산 (원래 연산 로직 그대로)
                                 stock_factor = s_curr / s_base
                                 bench_factor = curr_bench_price / base_bench_price
                                 rel_strength = ((stock_factor / bench_factor) - 1.0) * 100.0
 
-                                # 당일 거래대금 (원 단위)
                                 trading_val = s_curr * df_s_filtered["Volume"].iloc[-1]
 
-                                # 최근 N일 최고 거래량 대비 당일 거래량 비율 (%)
                                 max_vol = df_s_filtered["Volume"].max()
                                 curr_vol = df_s_filtered["Volume"].iloc[-1]
                                 vol_ratio = (curr_vol / max_vol * 100.0) if max_vol > 0 else 0.0
 
-                                # 시가총액 및 거래대금 (억 원 단위 변환)
                                 marcap_eok = marcap / 1e8 if marcap else 0
                                 trading_val_eok = trading_val / 1e8
 
-                                # --- 상세 필터링 판정 ---
+                                # 사이드바 상세 필터 조건 판정
                                 if mc_min > 0 and marcap_eok < mc_min:
                                     continue
                                 if mc_max > 0 and marcap_eok > mc_max:
@@ -230,7 +232,6 @@ with tab1:
                                 if vol_ratio_max != 0.0 and vol_ratio > vol_ratio_max:
                                     continue
 
-                                # 최종 고정 컬럼 구성 (종목수익률과 거래량 비율 위치 변경 반영)
                                 results.append(
                                     {
                                         "시장": mkt,
@@ -241,7 +242,7 @@ with tab1:
                                         "종목수익률(%)": round(stock_growth, 2),
                                         "거래량 비율(%)": f"{vol_ratio:.1f}%",
                                         "상대강도(%)": round(rel_strength, 2),
-                                        "_code": code,  # 차트 조회용 내부 고유코드
+                                        "_code": code,
                                     }
                                 )
 
@@ -252,18 +253,17 @@ with tab1:
                     else:
                         st.warning("조건에 맞는 종목 데이터를 찾지 못했습니다.")
 
-    # --- ④ 결과 표 출력 ---
+    # 결과 표 출력
     if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
 
         st.subheader("📋 스크리닝 결과 목록")
-        # 차트용 내부 코드는 화면에 노출하지 않고 표시
         display_cols = [col for col in df_res.columns if col != "_code"]
         st.dataframe(df_res[display_cols], use_container_width=True)
 
 
 # -------------------------------------------------------------------------
-# [탭 2] 종목 상세 및 추이 차트 (2단 비교 차트)
+# [탭 2] 종목 상세 및 추이 차트
 # -------------------------------------------------------------------------
 with tab2:
     st.subheader("2. 종목별 상세 추이 분석 (2단 비교 차트)")
@@ -360,7 +360,7 @@ with tab2:
 
 
 # -------------------------------------------------------------------------
-# [탭 3] 매매 복기 및 차트 게시판 (메모장 + 이미지 + 백업)
+# [탭 3] 매매 복기 및 차트 게시판
 # -------------------------------------------------------------------------
 with tab3:
     st.subheader("3. 나만의 매매 일지 및 차트 복기 게시판")
