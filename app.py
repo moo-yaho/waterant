@@ -141,14 +141,14 @@ with vr_col2:
 
 # --- 5. 메인 탭 구성 ---
 tab1, tab2, tab3 = st.tabs(
-    ["📊 상대강도 스크리닝", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
+    ["📊 상대강도 분석", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
 )
 
 # -------------------------------------------------------------------------
-# [탭 1] 상대강도 스크리닝
+# [탭 1] 상대강도 분석
 # -------------------------------------------------------------------------
 with tab1:
-    st.subheader("1. 시장 대비 상대강도 스크리닝")
+    st.subheader("1. 시장 대비 상대강도 분석")
 
     # --- 1구역: 날짜 및 기간 설정 ---
     st.markdown("##### 📅 1구역: 날짜 및 기간 설정")
@@ -156,7 +156,7 @@ with tab1:
 
     with d_col1:
         analysis_date = st.date_input(
-            "분석일 (기본값: 오늘)", value=datetime.today(), help="스크리닝의 종료 기준 날짜입니다."
+            "분석일 (기본값: 오늘)", value=datetime.today(), help="분석의 종료 기준 날짜입니다."
         )
 
     with d_col2:
@@ -326,7 +326,7 @@ with tab1:
     if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
 
-        st.subheader("📋 스크리닝 결과 목록")
+        st.subheader("📋 분 결과 목록")
         st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
         display_cols = [col for col in df_res.columns if col != "_code"]
         st.dataframe(df_res[display_cols], use_container_width=True)
