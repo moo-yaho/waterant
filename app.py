@@ -136,16 +136,9 @@ def process_single_stock(row, target_market, benchmark_code, bench_dict, search_
     rel_strength = ((stock_factor / bench_factor) - 1.0) * 100.0
 
     trading_val = s_curr * df_s_filtered["Volume"].iloc[-1]
-    
-    # 거래량 비율 계산 (수축 기간 필터 반영)
-    contract_period = filters.get("vol_contract_period", 0)
-    if contract_period > 0 and len(df_s_filtered) >= contract_period:
-        base_vol = df_s_filtered["Volume"].iloc[-contract_period:].mean()
-    else:
-        base_vol = df_s_filtered["Volume"].max()
-        
+    max_vol = df_s_filtered["Volume"].max()
     curr_vol = df_s_filtered["Volume"].iloc[-1]
-    vol_ratio = (curr_vol / base_vol * 100.0) if base_vol > 0 else 0.0
+    vol_ratio = (curr_vol / max_vol * 100.0) if max_vol > 0 else 0.0
 
     marcap_eok = marcap / 1e8 if marcap else 0
     trading_val_eok = trading_val / 1e8
@@ -236,7 +229,7 @@ if rs_min != 0.0 or rs_max != 0.0:
     st.sidebar.caption(f"💡 범위: {rs_min}% ~ {f'{rs_max}%' if rs_max != 0.0 else '제한없음'}")
 
 st.sidebar.subheader("거래량 비율 (%)")
-st.sidebar.caption("ℹ️ 기간 내 최고(또는 수축평균) 거래량 대비 분석일 당일 거래량의 비율입니다.")
+st.sidebar.caption("ℹ️ 기간 내 최고 거래량 대비 분석일 당일 거래량의 비율입니다.")
 vr_col1, vr_col2 = st.sidebar.columns(2)
 with vr_col1:
     vol_ratio_min = st.number_input("최소", value=0.0, step=5.0, key="vr_min")
@@ -246,11 +239,6 @@ if vol_ratio_min != 0.0 or vol_ratio_max != 0.0:
     st.sidebar.caption(f"💡 범위: {vol_ratio_min}% ~ {f'{vol_ratio_max}%' if vol_ratio_max != 0.0 else '제한없음'}")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ 고급 트레이딩 옵션")
-vol_contract_period = st.sidebar.number_input(
-    "거래량 수축 기준 기간 (일)", min_value=0, value=0, step=5,
-    help="0이면 기간 내 최고 거래량 대비 비율을 계산하며, N(>0) 입력 시 최근 N일 평균 거래량 대비 비율을 계산합니다."
-)
 use_custom_trough = st.sidebar.checkbox("지수 바닥일 수동 지정")
 custom_trough_date = None
 if use_custom_trough:
@@ -346,7 +334,6 @@ with tab1:
                 "val_min": val_min, "val_max": val_max,
                 "rs_min": rs_min, "rs_max": rs_max,
                 "vol_ratio_min": vol_ratio_min, "vol_ratio_max": vol_ratio_max,
-                "vol_contract_period": vol_contract_period,
                 "custom_trough_date": custom_trough_date.strftime("%Y-%m-%d") if custom_trough_date else None
             }
 
@@ -385,7 +372,7 @@ with tab1:
     if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
         st.subheader("📋 분석 결과 목록")
-        st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고(또는 수축평균) 거래량 대비 분석일 당일 거래량 비율")
+        st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
         display_cols = [col for col in df_res.columns if col != "_code"]
         st.dataframe(
             df_res[display_cols],
