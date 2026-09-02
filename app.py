@@ -1,5 +1,5 @@
 import streamlit as st
-import finance_datareader as fdr
+import FinanceDataReader as fdr
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
