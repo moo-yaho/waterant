@@ -402,11 +402,11 @@ with tab2:
 
                     if "자동" in chart_bench_option:
                         ch_b_code = "KQ11" if t_mkt == "KOSDAQ" else "KS11"
-                        ch_b_name = "코스닥" if t_mkt == "KOSDAQ" else "코스피"
+                        ch_b_name = "KOSDAQ" if t_mkt == "KOSDAQ" else "KOSPI"
                     elif "KS11" in chart_bench_option:
-                        ch_b_code, ch_b_name = "KS11", "코스피"
+                        ch_b_code, ch_b_name = "KS11", "KOSPI"
                     elif "KQ11" in chart_bench_option:
-                        ch_b_code, ch_b_name = "KQ11", "코스닥"
+                        ch_b_code, ch_b_name = "KQ11", "KOSDAQ"
                     else:
                         ch_b_code, ch_b_name = "069500", "KODEX 200"
 
@@ -431,20 +431,20 @@ with tab2:
 
                             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-                            ax1.plot(common_idx, stock_cum_ret, label=f"{selected_name} (종목)", color="crimson", linewidth=2)
-                            ax1.plot(common_idx, bench_cum_ret, label=f"{ch_b_name} (지수)", color="dodgerblue", linewidth=2, linestyle="--")
-                            ax1.axvline(pd.Timestamp(trough_d_str), color="purple", linestyle=":", alpha=0.8, label=f"지수 바닥일 ({trough_d_str})")
-                            ax1.set_title(f"[{selected_name}] 지수 바닥일 기준 누적 수익률 비교 (%)")
-                            ax1.set_ylabel("수익률 (%)")
+                            ax1.plot(common_idx, stock_cum_ret, label=f"Stock ({t_code})", color="crimson", linewidth=2)
+                            ax1.plot(common_idx, bench_cum_ret, label=f"Index ({ch_b_name})", color="dodgerblue", linewidth=2, linestyle="--")
+                            ax1.axvline(pd.Timestamp(trough_d_str), color="purple", linestyle=":", alpha=0.8, label=f"Base Date ({trough_d_str})")
+                            ax1.set_title(f"Cumulative Return Comparison (%) from Base Date")
+                            ax1.set_ylabel("Return (%)")
                             ax1.legend()
                             ax1.grid(True, alpha=0.3)
 
-                            ax2.plot(common_idx, rs_trend, label="상대강도 추이 (초과 성과 %)", color="forestgreen", linewidth=2)
+                            ax2.plot(common_idx, rs_trend, label="Relative Strength Trend (%)", color="forestgreen", linewidth=2)
                             ax2.axhline(0, color="gray", linestyle=":", alpha=0.7)
                             ax2.axvline(pd.Timestamp(trough_d_str), color="purple", linestyle=":", alpha=0.8)
-                            ax2.set_title("상대강도 비율 추이 (우상향 = 주도력 강화)")
-                            ax2.set_ylabel("상대강도 (%)")
-                            ax2.set_xlabel("날짜")
+                            ax2.set_title("Relative Strength Trend (Upward = Stronger Lead)")
+                            ax2.set_ylabel("Relative Strength (%)")
+                            ax2.set_xlabel("Date")
                             ax2.legend()
                             ax2.grid(True, alpha=0.3)
 
