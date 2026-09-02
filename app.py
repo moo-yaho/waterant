@@ -41,7 +41,7 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; }
     .stButton>button { width: 100%; border-radius: 6px; font-weight: bold; }
 </style>
-""", unsafe_allow_cookies=True)
+""", unsafe_allow_html=True) # ✅ 정상 수정
 
 # ---------------------------------------------------------
 # 1. 데이터 수집 및 멀티스레딩 데이터 처리 연산 엔진
