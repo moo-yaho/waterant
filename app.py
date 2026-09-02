@@ -38,6 +38,16 @@ st.set_page_config(
     page_title="개인 트레이딩 분석 & 일지 툴", page_icon="📈", layout="wide"
 )
 
+# Streamlit 웹 UI 전체 한글 폰트 깨짐 방지 (웹폰트 강제 적용)
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+    html, body, [class*="css"] {
+        font-family: 'Noto Sans KR', sans-serif !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📈 개인 주도주 분석 & 매매 일지 시스템")
 st.markdown(
     "지수 바닥일 대비 강력한 주도주를 발굴하고, 차트와 함께 매매 복기를 기록하는 나만의 프라이빗 툴입니다."
@@ -151,11 +161,11 @@ def process_single_stock(row, target_market, benchmark_code, df_single_bench, se
     return {
         "시장": mkt,
         "종목명": name,
-        "시가총액(억)": f"{marcap_eok:,.0f}" if marcap_eok > 0 else "-",
-        "현재가(원)": f"{s_curr:,.0f}",
-        "거래대금(억)": f"{trading_val_eok:,.0f}",
+        "시가총액(억)": marcap_eok if marcap_eok > 0 else 0,
+        "현재가(원)": s_curr,
+        "거래대금(억)": trading_val_eok,
         "종목수익률(%)": round(stock_growth, 2),
-        "거래량 비율(%)": f"{vol_ratio:.1f}%",
+        "거래량 비율(%)": round(vol_ratio, 1),
         "상대강도(%)": round(rel_strength, 2),
         "지수바닥일": trough_date.strftime("%Y-%m-%d"),
         "_code": code,
@@ -343,7 +353,18 @@ with tab1:
         st.subheader("📋 분석 결과 목록")
         st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
         display_cols = [col for col in df_res.columns if col != "_code"]
-        st.dataframe(df_res[display_cols], use_container_width=True)
+        st.dataframe(
+            df_res[display_cols],
+            column_config={
+                "시가총액(억)": st.column_config.NumberColumn("시가총액(억)", format="%d"),
+                "현재가(원)": st.column_config.NumberColumn("현재가(원)", format="%d"),
+                "거래대금(억)": st.column_config.NumberColumn("거래대금(억)", format="%d"),
+                "종목수익률(%)": st.column_config.NumberColumn("종목수익률(%)", format="%.2f%%"),
+                "거래량 비율(%)": st.column_config.NumberColumn("거래량 비율(%)", format="%.1f%%"),
+                "상대강도(%)": st.column_config.NumberColumn("상대강도(%)", format="%.2f%%"),
+            },
+            use_container_width=True
+        )
 
 
 # -------------------------------------------------------------------------
@@ -371,7 +392,7 @@ with tab2:
             trough_d_str = target_row["지수바닥일"]
 
             st.write(
-                f"**선택 종목:** {selected_name} ({t_code}) | **현재가:** {target_row['현재가(원)']}원 | **지수 바닥일:** {trough_d_str} | **상대강도:** {target_row['상대강도(%)']}%"
+                f"**선택 종목:** {selected_name} ({t_code}) | **현재가:** {target_row['현재가(원)']:,.0f}원 | **지수 바닥일:** {trough_d_str} | **상대강도:** {target_row['상대강도(%)']}%"
             )
 
             if st.button("📊 상세 추이 차트 그리기", type="primary"):
