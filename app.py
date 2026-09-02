@@ -326,7 +326,7 @@ with tab1:
     if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
 
-        st.subheader("📋 분 결과 목록")
+        st.subheader("📋 분석 결과 목록")
         st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
         display_cols = [col for col in df_res.columns if col != "_code"]
         st.dataframe(df_res[display_cols], use_container_width=True)
