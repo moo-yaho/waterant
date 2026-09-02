@@ -91,9 +91,15 @@ with tab1:
         )
 
     with col4:
-        market_type = st.selectbox(
-            "대상 시장", ["KRX (전체)", "KOSPI", "KOSDAQ"]
-        )
+        market_options = {
+    "KRX (전체)": "KRX",
+    "KOSPI": "KOSPI",
+    "KOSDAQ": "KOSDAQ"
+}
+selected_market_label = st.selectbox(
+    "대상 시장", list(market_options.keys())
+)
+market_type = market_options[selected_market_label]
 
     # 날짜 계산 로직
     today = datetime.today()
@@ -116,7 +122,11 @@ with tab1:
                 )
             else:
                 # 2. KRX 종목 리스팅
-                df_krx = fdr.StockListing(market_type)
+                try:
+    df_krx = fdr.StockListing(market_type)
+except Exception:
+    # KRX 직접 조회가 막힐 경우 상장 종목 목록 대체 조회
+    df_krx = fdr.StockListing("KRX-MARCAP") if market_type == "KRX" else fdr.StockListing(market_type)
 
                 # 분석 기간의 시작 기준가(바닥일) 구하기
                 df_bench_filtered = df_bench[df_bench.index >= start_date]
