@@ -89,7 +89,7 @@ def get_start_date(num, unit):
 
 start_date = get_start_date(period_num, period_unit)
 
-if st.button("🚀 분", type="primary"):
+if st.button("🚀 분석", type="primary"):
     with st.spinner("시장 데이터 및 종목별 상대강도를 분석 중입니다..."):
         try:
             # 1. 기준 지수 데이터 수집
