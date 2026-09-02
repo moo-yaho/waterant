@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 from datetime import datetime, timedelta
 import io
 import json
@@ -32,7 +32,7 @@ def get_market_data(symbol, start_date):
         if df.empty:
             return None
         return df
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -67,7 +67,6 @@ with tab1:
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        # 지수 선택
         index_options = {
             "코스피 (KS11)": "KS11",
             "코스닥 (KQ11)": "KQ11",
@@ -92,14 +91,14 @@ with tab1:
 
     with col4:
         market_options = {
-    "KRX (전체)": "KRX",
-    "KOSPI": "KOSPI",
-    "KOSDAQ": "KOSDAQ"
-}
-selected_market_label = st.selectbox(
-    "대상 시장", list(market_options.keys())
-)
-market_type = market_options[selected_market_label]
+            "KRX (전체)": "KRX",
+            "KOSPI": "KOSPI",
+            "KOSDAQ": "KOSDAQ",
+        }
+        selected_market_label = st.selectbox(
+            "대상 시장", list(market_options.keys())
+        )
+        market_type = market_options[selected_market_label]
 
     # 날짜 계산 로직
     today = datetime.today()
@@ -107,28 +106,24 @@ market_type = market_options[selected_market_label]
         delta_days = period_num
     elif "주 전" in period_unit:
         delta_days = period_num * 7
-    else:  # 개월 전
+    else:
         delta_days = period_num * 30
 
     start_date = (today - timedelta(days=delta_days)).strftime("%Y-%m-%d")
 
     if st.button("🚀 분석 실행", type="primary"):
         with st.spinner("시장 데이터와 전 종목을 분석 중입니다... 잠시만 기다려주세요."):
-            # 1. 지수 데이터 가져오기
             df_bench = get_market_data(benchmark_code, start_date)
             if df_bench is None or df_bench.empty:
                 st.error(
                     "기준 지수 데이터를 가져오는 데 실패했습니다. 날짜를 조정해 보세요."
                 )
             else:
-                # 2. KRX 종목 리스팅
                 try:
-    df_krx = fdr.StockListing(market_type)
-except Exception:
-    # KRX 직접 조회가 막힐 경우 상장 종목 목록 대체 조회
-    df_krx = fdr.StockListing("KRX-MARCAP") if market_type == "KRX" else fdr.StockListing(market_type)
+                    df_krx = fdr.StockListing(market_type)
+                except Exception:
+                    df_krx = fdr.StockListing("KRX-MARCAP") if market_type == "KRX" else fdr.StockListing("KRX")
 
-                # 분석 기간의 시작 기준가(바닥일) 구하기
                 df_bench_filtered = df_bench[df_bench.index >= start_date]
                 if len(df_bench_filtered) < 2:
                     st.warning(
@@ -139,11 +134,9 @@ except Exception:
                     curr_bench_price = df_bench_filtered["Close"].iloc[-1]
                     bench_growth = (
                         curr_bench_price / base_bench_price
-                    ) - 1.0  # 지수 성장률
+                    ) - 1.0
 
                     results = []
-                    # 샘플링 상위 100개 종목만 테스트 (실전에서는 전체 순회 가능)
-                    # 전체를 다 돌면 시간이 걸리므로 편의상 상위 150개만 예시로 처리하거나 전체 순회
                     target_stocks = df_krx.head(150)
 
                     for idx, row in target_stocks.iterrows():
@@ -162,17 +155,14 @@ except Exception:
                                     (s_curr / s_base) - 1.0
                                 ) or 0.0
 
-                                # [핵심] 나누기(비율) 방식 상대강도 계산
-                                # (종목 성장 배율 / 지수 성장 배율) - 1 또는 비율 자체
                                 stock_factor = s_curr / s_base
                                 bench_factor = (
                                     curr_bench_price / base_bench_price
                                 )
                                 rel_strength = (
                                     (stock_factor / bench_factor) - 1.0
-                                ) * 100.0  # 백분율 초과 성과
+                                ) * 100.0
 
-                                # 거래대금 대략치 계산 (최근 거래량 * 종가)
                                 trading_val = (
                                     df_s_filtered["Close"].iloc[-1]
                                     * df_s_filtered["Volume"].iloc[-1]
@@ -202,7 +192,6 @@ except Exception:
                     else:
                         st.warning("조건에 맞는 종목 데이터를 찾지 못했습니다.")
 
-    # 분석 결과가 존재할 경우 다중 복합 필터 및 정렬 제공
     if "analysis_result" in st.session_state:
         st.markdown("---")
         st.subheader("🛠️ 다중 복합 필터 및 정렬 패널")
@@ -224,14 +213,12 @@ except Exception:
         with f_col3:
             min_price = st.number_input("현재가 최소값 이상 (원)", value=1000, step=500)
 
-        # 필터 적용
         filtered_df = df_res[
             (df_res["상대강도(%)"] >= min_rs)
             & (df_res["거래대금(원)"] >= min_val)
             & (df_res["현재가"] >= min_price)
         ]
 
-        # 정렬 옵션
         s_col1, s_col2 = st.columns(2)
         with s_col1:
             sort_by = st.selectbox(
@@ -279,32 +266,27 @@ with tab2:
                     df_b = get_market_data(benchmark_code, start_date)
 
                     if df_s is not None and df_b is not None:
-                        # 날짜 인덱스 교집합 맞추기
                         common_idx = df_s.index.intersection(df_b.index)
                         df_s = df_s.loc[common_idx]
                         df_b = df_b.loc[common_idx]
 
                         if not df_s.empty:
-                            # 바닥일(0%) 기준 누적 수익률 계산
                             s_start = df_s["Close"].iloc[0]
                             b_start = df_b["Close"].iloc[0]
 
                             stock_cum_ret = (df_s["Close"] / s_start - 1.0) * 100
                             bench_cum_ret = (df_b["Close"] / b_start - 1.0) * 100
 
-                            # 날짜별 상대강도 비율 추이 계산 ((종목배율 / 지수배율) - 1) * 100
                             stock_factor = df_s["Close"] / s_start
                             bench_factor = df_b["Close"] / b_start
                             rs_trend = (
                                 (stock_factor / bench_factor) - 1.0
                             ) * 100
 
-                            # 2단 분리 Matplotlib 차트 그리기
                             fig, (ax1, ax2) = plt.subplots(
                                 2, 1, figsize=(10, 8), sharex=True
                             )
 
-                            # 상단 차트: 절대 수익률 비교
                             ax1.plot(
                                 common_idx,
                                 stock_cum_ret,
@@ -327,7 +309,6 @@ with tab2:
                             ax1.legend()
                             ax1.grid(True, alpha=0.3)
 
-                            # 하단 차트: 상대강도 비율 추이
                             ax2.plot(
                                 common_idx,
                                 rs_trend,
@@ -364,7 +345,6 @@ with tab3:
 
     notes = load_notes()
 
-    # 입력 폼
     with st.form("note_form", clear_on_submit=True):
         f_col1, f_col2, f_col3 = st.columns(3)
         with f_col1:
@@ -403,7 +383,7 @@ with tab3:
                     "content": note_content,
                     "image": img_base64,
                 }
-                notes.insert(0, new_note)  # 최신순 정렬
+                notes.insert(0, new_note)
                 save_notes(notes)
                 st.success("매매 일지가 안전하게 저장되었습니다!")
                 st.rerun()
@@ -414,10 +394,8 @@ with tab3:
     if not notes:
         st.info("아직 작성된 매매 일지가 없습니다. 위 폼을 채워 첫 일지를 작성해 보세요!")
     else:
-        # 백업 및 복구 버튼 영역
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            # 전체 메모 백업 다운로드
             json_str = json.dumps(notes, ensure_ascii=False, indent=4)
             st.download_button(
                 label="📥 내 모든 일지 백업 파일(JSON) 다운로드",
@@ -426,7 +404,6 @@ with tab3:
                 mime="application/json",
             )
         with b_col2:
-            # 백업 파일 업로드 복구
             uploaded_backup = st.file_uploader(
                 "📤 백업 파일 업로드하여 복구하기", type=["json"]
             )
