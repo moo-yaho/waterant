@@ -413,12 +413,11 @@ with tab2:
 
             t_code = target_row["_code"]
             t_mkt = target_row["시장"]
-            trough_d_str = target_row["지수바닥일"]
 
             st.write(
                 f"**선택 종목:** {selected_name} ({t_code}) | "
                 f"**현재가:** {target_row['현재가(원)']:,.0f}원 | "
-                f"**지수 바닥일:** {trough_d_str} | "
+                f"**지수 바닥일:** {target_row['지수바닥일']} | "
                 f"**상대강도:** {target_row['상대강도(%)']}%"
             )
 
@@ -429,14 +428,13 @@ with tab2:
                         "search_start_date",
                         search_start_date
                     )
-
                     e_date_str = st.session_state.get(
                         "analysis_date_str",
                         analysis_date_str
                     )
 
                     # -----------------------------------------------------
-                    # 비교 기준 지수 결정
+                    # 비교 지수 결정
                     # -----------------------------------------------------
                     if "자동" in chart_bench_option:
                         if t_mkt == "KOSDAQ":
@@ -459,7 +457,7 @@ with tab2:
                         ch_b_name = "KODEX 200"
 
                     # -----------------------------------------------------
-                    # 종목 및 지수 데이터
+                    # 데이터 가져오기
                     # -----------------------------------------------------
                     df_s = get_market_data(
                         t_code,
@@ -475,7 +473,9 @@ with tab2:
 
                     if df_s is not None and df_b is not None:
 
-                        common_idx = df_s.index.intersection(df_b.index)
+                        common_idx = df_s.index.intersection(
+                            df_b.index
+                        )
 
                         df_s = df_s.loc[common_idx]
                         df_b = df_b.loc[common_idx]
@@ -483,129 +483,160 @@ with tab2:
                         if len(common_idx) >= 2:
 
                             # -------------------------------------------------
-                            # 선택한 지수의 해당 기간 최저일을 기준일로 사용
+                            # 선택한 지수의 기간 내 최저일을 기준일로 사용
                             # -------------------------------------------------
                             trough_date = df_b["Close"].idxmin()
 
-                            if trough_date in common_idx:
+                            s_trough_price = df_s.loc[
+                                trough_date, "Close"
+                            ]
 
-                                s_trough_price = df_s.loc[
-                                    trough_date, "Close"
-                                ]
+                            b_trough_price = df_b.loc[
+                                trough_date, "Close"
+                            ]
 
-                                b_trough_price = df_b.loc[
-                                    trough_date, "Close"
-                                ]
+                            if (
+                                s_trough_price > 0
+                                and b_trough_price > 0
+                            ):
 
-                                if (
-                                    s_trough_price > 0
-                                    and b_trough_price > 0
-                                ):
+                                # -------------------------------------------------
+                                # 종목 누적수익률
+                                # -------------------------------------------------
+                                stock_cum_ret = (
+                                    df_s["Close"]
+                                    / s_trough_price
+                                    - 1.0
+                                ) * 100
 
-                                    # -------------------------------------------------
-                                    # 종목 누적 수익률
-                                    # -------------------------------------------------
-                                    stock_cum_ret = (
-                                        df_s["Close"]
-                                        / s_trough_price
-                                        - 1.0
-                                    ) * 100
+                                # -------------------------------------------------
+                                # 지수 누적수익률
+                                # -------------------------------------------------
+                                bench_cum_ret = (
+                                    df_b["Close"]
+                                    / b_trough_price
+                                    - 1.0
+                                ) * 100
 
-                                    # -------------------------------------------------
-                                    # 지수 누적 수익률
-                                    # -------------------------------------------------
-                                    bench_cum_ret = (
-                                        df_b["Close"]
-                                        / b_trough_price
-                                        - 1.0
-                                    ) * 100
+                                # -------------------------------------------------
+                                # 상대강도
+                                # -------------------------------------------------
+                                stock_factor = (
+                                    df_s["Close"]
+                                    / s_trough_price
+                                )
 
-                                    # -------------------------------------------------
-                                    # 상대강도
-                                    # 기존 계산 방식 그대로 유지
-                                    # -------------------------------------------------
-                                    stock_factor = (
-                                        df_s["Close"]
-                                        / s_trough_price
+                                bench_factor = (
+                                    df_b["Close"]
+                                    / b_trough_price
+                                )
+
+                                rs_trend = (
+                                    (stock_factor / bench_factor)
+                                    - 1.0
+                                ) * 100
+
+                                # -------------------------------------------------
+                                # 차트
+                                # -------------------------------------------------
+                                fig, (ax1, ax2) = plt.subplots(
+                                    2,
+                                    1,
+                                    figsize=(10, 8),
+                                    sharex=True
+                                )
+
+                                # 상단: 종목과 지수 수익률
+                                ax1.plot(
+                                    common_idx,
+                                    stock_cum_ret,
+                                    label=f"Stock ({t_code})",
+                                    color="crimson",
+                                    linewidth=2
+                                )
+
+                                ax1.plot(
+                                    common_idx,
+                                    bench_cum_ret,
+                                    label=f"Index ({ch_b_name})",
+                                    color="dodgerblue",
+                                    linewidth=2,
+                                    linestyle="--"
+                                )
+
+                                ax1.axvline(
+                                    pd.Timestamp(trough_date),
+                                    color="purple",
+                                    linestyle=":",
+                                    alpha=0.8,
+                                    label=(
+                                        f"Base Date "
+                                        f"({trough_date.strftime('%Y-%m-%d')})"
                                     )
+                                )
 
-                                    bench_factor = (
-                                        df_b["Close"]
-                                        / b_trough_price
-                                    )
+                                ax1.set_title(
+                                    "Cumulative Return Comparison (%) from Base Date"
+                                )
+                                ax1.set_ylabel("Return (%)")
+                                ax1.legend()
+                                ax1.grid(True, alpha=0.3)
 
-                                    rs_trend = (
-                                        stock_factor
-                                        / bench_factor
-                                        - 1.0
-                                    ) * 100
+                                # 하단: 상대강도 추이
+                                ax2.plot(
+                                    common_idx,
+                                    rs_trend,
+                                    label=f"Relative Strength vs {ch_b_name}",
+                                    color="forestgreen",
+                                    linewidth=2
+                                )
 
-                                    # -------------------------------------------------
-                                    # 차트 생성
-                                    # -------------------------------------------------
-                                    fig, (ax1, ax2) = plt.subplots(
-                                        2,
-                                        1,
-                                        figsize=(10, 8),
-                                        sharex=True
-                                    )
+                                ax2.axhline(
+                                    0,
+                                    color="gray",
+                                    linestyle=":",
+                                    alpha=0.7
+                                )
 
-                                    # 상단: 종목 vs 지수 수익률
-                                    ax1.plot(
-                                        common_idx,
-                                        stock_cum_ret,
-                                        label=f"Stock ({t_code})",
-                                        color="crimson",
-                                        linewidth=2
-                                    )
+                                ax2.axvline(
+                                    pd.Timestamp(trough_date),
+                                    color="purple",
+                                    linestyle=":",
+                                    alpha=0.8
+                                )
 
-                                    ax1.plot(
-                                        common_idx,
-                                        bench_cum_ret,
-                                        label=f"Index ({ch_b_name})",
-                                        color="dodgerblue",
-                                        linewidth=2,
-                                        linestyle="--"
-                                    )
+                                ax2.set_title(
+                                    f"Relative Strength Trend vs {ch_b_name}"
+                                )
+                                ax2.set_ylabel("Relative Strength (%)")
+                                ax2.set_xlabel("Date")
+                                ax2.legend()
+                                ax2.grid(True, alpha=0.3)
 
-                                    ax1.axvline(
-                                        pd.Timestamp(trough_date),
-                                        color="purple",
-                                        linestyle=":",
-                                        alpha=0.8,
-                                        label=(
-                                            f"Base Date "
-                                            f"({trough_date.strftime('%Y-%m-%d')})"
-                                        )
-                                    )
+                                plt.tight_layout()
+                                st.pyplot(fig)
 
-                                    ax1.set_title(
-                                        "Cumulative Return Comparison (%) from Base Date"
-                                    )
+                            else:
+                                st.error(
+                                    "기준일의 종목 또는 지수 가격이 올바르지 않습니다."
+                                )
 
-                                    ax1.set_ylabel("Return (%)")
-                                    ax1.legend()
-                                    ax1.grid(True, alpha=0.3)
+                        else:
+                            st.error(
+                                "종목과 지수의 공통 거래일 데이터가 부족합니다."
+                            )
 
-                                    # 하단: RS 추이
-                                    ax2.plot(
-                                        common_idx,
-                                        rs_trend,
-                                        label=f"Relative Strength vs {ch_b_name}",
-                                        color="forestgreen",
-                                        linewidth=2
-                                    )
+                    else:
+                        st.error(
+                            "차트 데이터를 불러오지 못했습니다."
+                        )
 
-                                    ax2.axhline(
-                                        0,
-                                        color="gray",
-                                        linestyle=":",
-                                        alpha=0.7
-                                    )
+    else:
+        st.info(
+            "먼저 [탭 1]에서 '분석 실행'을 진행하여 "
+            "종목 리스트를 생성해 주세요."
+        )
 
-                                    ax2.axvline(
-                                        pd.Timestamp(trough_date),
-                                        color="purple",
 # -------------------------------------------------------------------------
 # [탭 3] 매매 복기 및 차트 게시판 (일지 & 백업)
 # -------------------------------------------------------------------------
