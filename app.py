@@ -1,193 +1,3 @@
-import streamlit as st
-import FinanceDataReader as fdr
-import pandas as pd
-import numpy as np
-import json
-import os
-from datetime import datetime, timedelta
-
-# 페이지 설정
-st.set_page_config(page_title="주식 상대강도(RS) & 눌림목 스크리너", layout="wide")
-
-st.title("📈 주식 상대강도(RS) 및 대시보드")
-
-# ==========================================
-# 1. 사이드바 설정 (스크리닝 조건)
-# ==========================================
-st.sidebar.header("⚙️ 기본 스크리닝 설정")
-
-index_choice = st.sidebar.selectbox(
-    "기준 지수 선택",
-    ["KOSPI", "KOSDAQ", "KOSPI+KOSDAQ"],
-    index=0
-)
-
-period_num = st.sidebar.number_input("기간 숫자 입력", min_value=1, value=20, step=1)
-period_unit = st.sidebar.selectbox("기간 단위", ["일", "주", "월"], index=0)
-market_target = st.sidebar.selectbox("대상 시장", ["전체", "KOSPI", "KOSDAQ"], index=0)
-
-st.sidebar.markdown("---")
-st.sidebar.header("🔍 상세 필터 옵션 (비워두면 제한없음)")
-
-top_n_limit = st.sidebar.number_input(
-    "시가총액 상위 N개 제한 (0은 전종목)",
-    min_value=0,
-    value=300,
-    step=50,
-    help="장중 빠른 스크리닝을 위해 시가총액 상위 N개 종목만 1차 추출 후 분석합니다."
-)
-
-col_mcap1, col_mcap2 = st.sidebar.columns(2)
-with col_mcap1:
-    min_mcap = st.number_input("최소 시가총액(억)", min_value=0.0, value=0.0, step=100.0)
-with col_mcap2:
-    max_mcap = st.number_input("최대 시가총액(억)", min_value=0.0, value=0.0, step=100.0)
-
-col_price1, col_price2 = st.sidebar.columns(2)
-with col_price1:
-    min_price = st.number_input("최소 현재가(원)", min_value=0, value=0, step=500)
-with col_price2:
-    max_price = st.number_input("최대 현재가(원)", min_value=0, value=0, step=500)
-
-col_vol_amt1, col_vol_amt2 = st.sidebar.columns(2)
-with col_vol_amt1:
-    min_amount = st.number_input("최소 거래대금(억)", min_value=0.0, value=0.0, step=10.0)
-with col_vol_amt2:
-    max_amount = st.number_input("최대 거래대금(억)", min_value=0.0, value=0.0, step=10.0)
-
-col_rs1, col_rs2 = st.sidebar.columns(2)
-with col_rs1:
-    min_rs = st.number_input("최소 RS(%)", min_value=-100.0, value=0.0, step=1.0)
-with col_rs2:
-    max_rs = st.number_input("최대 RS(%)", min_value=-100.0, value=0.0, step=1.0)
-
-st.sidebar.subheader("📉 거래량 급감 필터")
-vol_lookback_days = st.sidebar.number_input("과거 최고 거래량 조회 기간(일)", min_value=2, value=5, step=1)
-
-col_vol_ratio1, col_vol_ratio2 = st.sidebar.columns(2)
-with col_vol_ratio1:
-    min_vol_ratio = st.number_input("최소 거래량비율(%)", min_value=0.0, value=0.0, step=5.0)
-with col_vol_ratio2:
-    max_vol_ratio = st.number_input("최대 거래량비율(%)", min_value=0.0, value=0.0, step=5.0)
-
-
-# ==========================================
-# 2. 탭 구성 (스크리너 / 종목 분석 / 게시판 및 일지)
-# ==========================================
-tab1, tab2, tab3 = st.tabs(["🔎 종목 스크리너", "📊 종목 상세 분석", "📝 게시판 & 매매일지"])
-
-# ------------------------------------------
-# TAB 1: 종목 스크리너
-# ------------------------------------------
-with tab1:
-    st.subheader("🚀 종목 스크리닝 실행")
-
-    def get_start_date(num, unit):
-        today = datetime.now()
-        if unit == "일":
-            start = today - timedelta(days=num * 2)
-        elif unit == "주":
-            start = today - timedelta(weeks=num * 2)
-        elif unit == "월":
-            start = today - timedelta(days=num * 40)
-        return start.strftime("%Y-%m-%d")
-
-    start_date = get_start_date(period_num, period_unit)
-
-    if st.button("🚀 분석 실행", type="primary"):
-        with st.spinner("시장 데이터 및 종목별 상대강도를 분석 중입니다..."):
-            try:
-                # 1. 지수 데이터
-                if index_choice == "KOSPI":
-                    idx_df = fdr.DataReader("KS11", start_date)
-                elif index_choice == "KOSDAQ":
-                    idx_df = fdr.DataReader("KQ11", start_date)
-                else:
-                    idx_df = fdr.DataReader("KS11", start_date)
-                
-                idx_return = ((idx_df["Close"].iloc[-1] - idx_df["Close"].iloc[0]) / idx_df["Close"].iloc[0]) * 100
-
-                # 2. 종목 리스트
-                krx_df = fdr.StockListing("KRX")
-
-                if market_target == "KOSPI":
-                    krx_df = krx_df[krx_df["Market"] == "KOSPI"]
-                elif market_target == "KOSDAQ":
-                    krx_df = krx_df[krx_df["Market"] == "KOSDAQ"]
-
-                krx_df = krx_df.sort_values(by="Marcap", ascending=False)
-                if top_n_limit > 0:
-                    krx_df = krx_df.head(top_n_limit)
-
-                results = []
-
-                # 3. 개별 종목 분석
-                for _, row in krx_df.iterrows():
-                    code = row["Code"]
-                    name = row["Name"]
-                    market = row["Market"]
-                    marcap_billion = row["Marcap"] / 100000000
-
-                    stock_df = fdr.DataReader(code, start_date)
-                    if len(stock_df) < 2:
-                        continue
-
-                    close_price = stock_df["Close"].iloc[-1]
-                    volume_amount_billion = (stock_df["Amount"].iloc[-1]) / 100000000 if "Amount" in stock_df.columns else (close_price * stock_df["Volume"].iloc[-1]) / 100000000
-
-                    stock_return = ((close_price - stock_df["Close"].iloc[0]) / stock_df["Close"].iloc[0]) * 100
-                    rs_score = stock_return - idx_return
-
-                    recent_vol_df = stock_df.tail(vol_lookback_days)
-                    max_vol_recent = recent_vol_df["Volume"].max()
-                    today_vol = stock_df["Volume"].iloc[-1]
-                    
-                    vol_ratio = (today_vol / max_vol_recent * 100) if max_vol_recent > 0 else 100.0
-
-                    # 필터링
-                    if min_mcap > 0 and marcap_billion < min_mcap: continue
-                    if max_mcap > 0 and marcap_billion > max_mcap: continue
-                    if min_price > 0 and close_price < min_price: continue
-                    if max_price > 0 and close_price > max_price: continue
-                    if min_amount > 0 and volume_amount_billion < min_amount: continue
-                    if max_amount > 0 and volume_amount_billion > max_amount: continue
-                    if min_rs != 0.0 and rs_score < min_rs: continue
-                    if max_rs != 0.0 and rs_score > max_rs: continue
-                    if min_vol_ratio > 0 and vol_ratio < min_vol_ratio: continue
-                    if max_vol_ratio > 0 and vol_ratio > max_vol_ratio: continue
-
-                    results.append({
-                        "시장": market,
-                        "종목명": name,
-                        "시가총액(억)": marcap_billion,
-                        "현재가(원)": close_price,
-                        "거래대금(억)": volume_amount_billion,
-                        "거래량 비율(%)": vol_ratio,
-                        "종목수익률(%)": stock_return,
-                        "상대강도(%)": rs_score
-                    })
-
-                if results:
-                    res_df = pd.DataFrame(results)
-                    res_df = res_df.sort_values(by="상대강도(%)", ascending=False).reset_index(drop=True)
-
-                    st.success(f"총 {len(res_df)}개 종목이 스크리닝 조건에 포착되었습니다.")
-
-                    formatted_df = res_df.copy()
-                    formatted_df["시가총액(억)"] = formatted_df["시가총액(억)"].map("{:,.0f}".format)
-                    formatted_df["현재가(원)"] = formatted_df["현재가(원)"].map("{:,.0f}".format)
-                    formatted_df["거래대금(억)"] = formatted_df["거래대금(억)"].map("{:,.1f}".format)
-                    formatted_df["거래량 비율(%)"] = formatted_df["거래량 비율(%)"].map("{:.1f}%".format)
-                    formatted_df["종목수익률(%)"] = formatted_df["종목수익률(%)"].map("{:+.2f}%".format)
-                    formatted_df["상대강도(%)"] = formatted_df["상대강도(%)"].map("{:+.2f}%".format)
-
-                    st.dataframe(formatted_df, use_container_width=True)
-                else:
-                    st.warning("조건에 해당하는 종목이 없습니다. 필터 범위를 넓혀보세요.")
-
-            except Exception as e:
-                st.error(f"스크리닝 도중 오류가 발생했습니다: {e}")
-
 import base64
 from datetime import datetime, timedelta
 import io
@@ -198,6 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# 한글 폰트 설정 (Windows / Mac)
+plt.rcParams['font.family'] = 'Malgun Gothic' if os.name == 'nt' else 'AppleGothic'
+plt.rcParams['axes.unicode_minus'] = False
 
 # --- 1. 페이지 설정 및 디자인 세팅 ---
 st.set_page_config(
@@ -305,8 +119,14 @@ with tab1:
                     "기준 지수 데이터를 가져오는 데 실패했습니다. 날짜를 조정해 보세요."
                 )
             else:
+                # 세션에 기준 지수 및 설정 정보 저장
+                st.session_state["benchmark_code"] = benchmark_code
+                st.session_state["selected_idx_name"] = selected_idx_name
+                st.session_state["start_date"] = start_date
+
                 # 2. KRX 종목 리스팅
-                df_krx = fdr.StockListing(market_type)
+                target_market = "KRX" if "전체" in market_type else market_type
+                df_krx = fdr.StockListing(target_market)
 
                 # 분석 기간의 시작 기준가(바닥일) 구하기
                 df_bench_filtered = df_bench[df_bench.index >= start_date]
@@ -322,8 +142,6 @@ with tab1:
                     ) - 1.0  # 지수 성장률
 
                     results = []
-                    # 샘플링 상위 100개 종목만 테스트 (실전에서는 전체 순회 가능)
-                    # 전체를 다 돌면 시간이 걸리므로 편의상 상위 150개만 예시로 처리하거나 전체 순회
                     target_stocks = df_krx.head(150)
 
                     for idx, row in target_stocks.iterrows():
@@ -343,7 +161,6 @@ with tab1:
                                 ) or 0.0
 
                                 # [핵심] 나누기(비율) 방식 상대강도 계산
-                                # (종목 성장 배율 / 지수 성장 배율) - 1 또는 비율 자체
                                 stock_factor = s_curr / s_base
                                 bench_factor = (
                                     curr_bench_price / base_bench_price
@@ -352,7 +169,7 @@ with tab1:
                                     (stock_factor / bench_factor) - 1.0
                                 ) * 100.0  # 백분율 초과 성과
 
-                                # 거래대금 대략치 계산 (최근 거래량 * 종가)
+                                # 거래대금 계산
                                 trading_val = (
                                     df_s_filtered["Close"].iloc[-1]
                                     * df_s_filtered["Volume"].iloc[-1]
@@ -444,9 +261,7 @@ with tab2:
         )
 
         if selected_name:
-            target_row = df_target[df_target["종목명"] == selected_name].iloc[
-                0
-            ]
+            target_row = df_target[df_target["종목명"] == selected_name].iloc[0]
             t_code = target_row["종목코드"]
 
             st.write(
@@ -455,8 +270,12 @@ with tab2:
 
             if st.button("📊 상세 추이 차트 그리기"):
                 with st.spinner("차트 데이터를 계산 중입니다..."):
-                    df_s = get_market_data(t_code, start_date)
-                    df_b = get_market_data(benchmark_code, start_date)
+                    s_date = st.session_state.get("start_date", start_date)
+                    b_code = st.session_state.get("benchmark_code", benchmark_code)
+                    b_name = st.session_state.get("selected_idx_name", selected_idx_name)
+
+                    df_s = get_market_data(t_code, s_date)
+                    df_b = get_market_data(b_code, s_date)
 
                     if df_s is not None and df_b is not None:
                         # 날짜 인덱스 교집합 맞추기
@@ -495,7 +314,7 @@ with tab2:
                             ax1.plot(
                                 common_idx,
                                 bench_cum_ret,
-                                label=f"{selected_idx_name} (지수)",
+                                label=f"{b_name} (지수)",
                                 color="dodgerblue",
                                 linewidth=2,
                                 linestyle="--",
