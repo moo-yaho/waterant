@@ -111,8 +111,8 @@ with tab1:
 
     start_date = (today - timedelta(days=delta_days)).strftime("%Y-%m-%d")
 
-    if st.button("🚀 분석 실행", type="primary"):
-        with st.spinner("시장 데이터와 전 종목을 분석 중입니다... 잠시만 기다려주세요."):
+    if st.button("🚀 전 종목 분석 실행 (약 3~5분 소요)", type="primary"):
+        with st.spinner("전 종목 시세 데이터를 계산 중입니다. 잠시만 기다려주세요..."):
             df_bench = get_market_data(benchmark_code, start_date)
             if df_bench is None or df_bench.empty:
                 st.error(
@@ -132,12 +132,10 @@ with tab1:
                 else:
                     base_bench_price = df_bench_filtered["Close"].iloc[0]
                     curr_bench_price = df_bench_filtered["Close"].iloc[-1]
-                    bench_growth = (
-                        curr_bench_price / base_bench_price
-                    ) - 1.0
 
                     results = []
-                    target_stocks = df_krx.head(150)
+                    # 제한 없는 전 종목 수집
+                    target_stocks = df_krx
 
                     for idx, row in target_stocks.iterrows():
                         code = row["Code"]
@@ -168,17 +166,18 @@ with tab1:
                                     * df_s_filtered["Volume"].iloc[-1]
                                 )
 
+                                # 종목수익률과 상대강도 순서 변경 반영
                                 results.append(
                                     {
                                         "종목코드": code,
                                         "종목명": name,
                                         "현재가": s_curr,
                                         "거래대금(원)": trading_val,
-                                        "상대강도(%)": round(
-                                            rel_strength, 2
-                                        ),
                                         "종목수익률(%)": round(
                                             stock_growth * 100, 2
+                                        ),
+                                        "상대강도(%)": round(
+                                            rel_strength, 2
                                         ),
                                     }
                                 )
@@ -222,7 +221,7 @@ with tab1:
         s_col1, s_col2 = st.columns(2)
         with s_col1:
             sort_by = st.selectbox(
-                "정렬 기준 컬럼", ["상대강도(%)", "거래대금(원)", "종목수익률(%)", "현재가"]
+                "정렬 기준 컬럼", ["상대강도(%)", "종목수익률(%)", "거래대금(원)", "현재가"], index=0
             )
         with s_col2:
             ascending_opt = st.radio(
