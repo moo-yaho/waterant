@@ -752,21 +752,19 @@ if "analysis_result" in st.session_state:
     df_res = st.session_state["analysis_result"]
     st.subheader("📋 분석 결과 목록")
     st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
-
+    
     display_cols = [col for col in df_res.columns if col != "_code"]
-
+    
     # --- 엑셀 파일(.xlsx) 생성 및 다운로드 버튼 추가 ---
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_res[display_cols].to_excel(
-            writer, index=False, sheet_name="주도주분석결과"
-        )
-
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_res[display_cols].to_excel(writer, index=False, sheet_name='주도주분석결과')
+        
         workbook = writer.book
-        worksheet = writer.sheets["주도주분석결과"]
-
+        worksheet = writer.sheets['주도주분석결과']
+        
         worksheet.auto_filter.ref = worksheet.dimensions
-
+        
         for col in worksheet.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
@@ -776,14 +774,12 @@ if "analysis_result" in st.session_state:
                         max_len = max(max_len, len(str(cell.value)))
                 except:
                     pass
-            worksheet.column_dimensions[col_letter].width = max(
-                max_len + 5, 14
-            )
+            worksheet.column_dimensions[col_letter].width = max(max_len + 5, 14)
 
             header_name = worksheet.cell(row=1, column=col[0].column).value
             if header_name in ["시가총액(억)", "현재가(원)", "거래대금(억)"]:
                 for cell in col[1:]:
-                    cell.number_format = "#,##0"
+                    cell.number_format = '#,##0'
 
     excel_data = output.getvalue()
 
@@ -794,46 +790,27 @@ if "analysis_result" in st.session_state:
             data=excel_data,
             file_name=f"market_analysis_{datetime.today().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            use_container_width=True
         )
 
     # 화면 출력용 데이터프레임 (숫자형으로 유지하여 정렬 기능 보장)
     df_display = df_res[display_cols].copy()
-    for col in [
-        "시가총액(억)",
-        "현재가(원)",
-        "거래대금(억)",
-        "종목수익률(%)",
-        "거래량 비율(%)",
-        "상대강도(%)",
-    ]:
+    for col in ["시가총액(억)", "현재가(원)", "거래대금(억)", "종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]:
         if col in df_display.columns:
-            df_display[col] = pd.to_numeric(df_display[col], errors="coerce")
+            df_display[col] = pd.to_numeric(df_display[col], errors='coerce')
 
     # 화면에 출력 (column_config를 이용해 숫자 정렬은 유지하면서 콤마와 % 표시)
     st.dataframe(
         df_display,
         use_container_width=True,
         column_config={
-            "시가총액(억)": st.column_config.NumberColumn(
-                "시가총액(억)", format="#,##0"
-            ),
-            "현재가(원)": st.column_config.NumberColumn(
-                "현재가(원)", format="#,##0"
-            ),
-            "거래대금(억)": st.column_config.NumberColumn(
-                "거래대금(억)", format="#,##0"
-            ),
-            "종목수익률(%)": st.column_config.NumberColumn(
-                "종목수익률(%)", format="%.2f%%"
-            ),
-            "거래량 비율(%)": st.column_config.NumberColumn(
-                "거래량 비율(%)", format="%.1f%%"
-            ),
-            "상대강도(%)": st.column_config.NumberColumn(
-                "상대강도(%)", format="%.2f%%"
-            ),
-        },
+            "시가총액(억)": st.column_config.NumberColumn("시가총액(억)", format="#,##0"),
+            "현재가(원)": st.column_config.NumberColumn("현재가(원)", format="#,##0"),
+            "거래대금(억)": st.column_config.NumberColumn("거래대금(억)", format="#,##0"),
+            "종목수익률(%)": st.column_config.NumberColumn("종목수익률(%)", format="%.2f%%"),
+            "거래량 비율(%)": st.column_config.NumberColumn("거래량 비율(%)", format="%.1f%%"),
+            "상대강도(%)": st.column_config.NumberColumn("상대강도(%)", format="%.2f%%"),
+        }
     )
 
 
