@@ -1,1204 +1,649 @@
 import base64
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from datetime import datetime, timedelta
-
 import io
-
 import json
-
 import os
-
 import FinanceDataReader as fdr
-
 import matplotlib.font_manager as fm
-
 import matplotlib.pyplot as plt
-
 import numpy as np
-
 import pandas as pd
-
 import streamlit as st
-
 import io
-
 import openpyxl
-
 from openpyxl.utils import get_column_letter
 
 
-
-
-
 # --- 0. 한글 폰트 자동 설정 (차트 한글 깨짐 방지) ---
-
 @st.cache_resource
-
 def init_korean_font():
-
-    """Matplotlib 한글 폰트 깨짐 방지 설정"""
-
-    try:
-
-        font_list = [f.name for f in fm.fontManager.ttflist]
-
-        if "NanumGothic" in font_list:
-
-            plt.rcParams['font.family'] = 'NanumGothic'
-
-        elif "Malgun Gothic" in font_list:
-
-            plt.rcParams['font.family'] = 'Malgun Gothic'
-
-        elif "AppleGothic" in font_list:
-
-            plt.rcParams['font.family'] = 'AppleGothic'
-
-        else:
-
-            os.system('apt-get -y install fonts-nanum')
-
-            fm.fontManager.addfont('/usr/share/fonts/truetype/nanum/NanumGothic.ttf')
-
-            plt.rcParams['font.family'] = 'NanumGothic'
-
-    except Exception:
-
-        plt.rcParams['font.family'] = 'sans-serif'
-
-    plt.rcParams['axes.unicode_minus'] = False
-
-
+    """Matplotlib 한글 폰트 깨짐 방지 설정"""
+    try:
+        font_list = [f.name for f in fm.fontManager.ttflist]
+        if "NanumGothic" in font_list:
+            plt.rcParams['font.family'] = 'NanumGothic'
+        elif "Malgun Gothic" in font_list:
+            plt.rcParams['font.family'] = 'Malgun Gothic'
+        elif "AppleGothic" in font_list:
+            plt.rcParams['font.family'] = 'AppleGothic'
+        else:
+            os.system('apt-get -y install fonts-nanum')
+            fm.fontManager.addfont('/usr/share/fonts/truetype/nanum/NanumGothic.ttf')
+            plt.rcParams['font.family'] = 'NanumGothic'
+    except Exception:
+        plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['axes.unicode_minus'] = False
 
 init_korean_font()
 
-
-
 # --- 1. 페이지 설정 및 디자인 세팅 ---
-
 st.set_page_config(
-
-    page_title="개인 트레이딩 분석 & 일지 툴", page_icon="📈", layout="wide"
-
+    page_title="개인 트레이딩 분석 & 일지 툴", page_icon="📈", layout="wide"
 )
-
-
 
 st.markdown("""
-
-    <style>
-
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
-
-    html, body, [class*="css"] {
-
-        font-family: 'Noto Sans KR', sans-serif !important;
-
-    }
-
-    </style>
-
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+    html, body, [class*="css"] {
+        font-family: 'Noto Sans KR', sans-serif !important;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-
-
 st.title("📈 개인 주도주 분석 & 매매 일지 시스템")
-
 st.markdown(
-
-    "지수 바닥일 대비 강력한 주도주를 발굴하고, 차트와 함께 매매 복기를 기록하는 나만의 프라이빗 툴입니다."
-
+    "지수 바닥일 대비 강력한 주도주를 발굴하고, 차트와 함께 매매 복기를 기록하는 나만의 프라이빗 툴입니다."
 )
-
-
 
 NOTE_FILE = "trade_notes.json"
 
 
-
-
-
 # --- 2. 데이터 수집 및 백엔드 로직 ---
-
 @st.cache_data(ttl=3600)
-
 def get_market_data(symbol, start_date, end_date=None):
-
-    """지수 및 종목 데이터를 불러오는 함수"""
-
-    try:
-
-        df = fdr.DataReader(symbol, start_date, end_date)
-
-        if df is None or df.empty:
-
-            return None
-
-        return df
-
-    except Exception:
-
-        return None
-
-
-
+    """지수 및 종목 데이터를 불러오는 함수"""
+    try:
+        df = fdr.DataReader(symbol, start_date, end_date)
+        if df is None or df.empty:
+            return None
+        return df
+    except Exception:
+        return None
 
 
 def load_notes():
-
-    if os.path.exists(NOTE_FILE):
-
-        try:
-
-            with open(NOTE_FILE, "r", encoding="utf-8") as f:
-
-                return json.load(f)
-
-        except Exception:
-
-            return []
-
-    return []
-
-
-
+    if os.path.exists(NOTE_FILE):
+        try:
+            with open(NOTE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
 
 
 def save_notes(notes):
-
-    with open(NOTE_FILE, "w", encoding="utf-8") as f:
-
-        json.dump(notes, f, ensure_ascii=False, indent=4)
-
-
-
+    with open(NOTE_FILE, "w", encoding="utf-8") as f:
+        json.dump(notes, f, ensure_ascii=False, indent=4)
 
 
 # 개별 종목 수집 및 계산 워커 함수 (멀티스레딩용)
-
 def process_single_stock(row, target_market, benchmark_code, bench_dict, search_start_date, analysis_date_str, filters):
-
-    code = row["Code"]
-
-    name = row["Name"]
-
-    mkt = row.get("Market", target_market)
-
-    marcap = row.get("Marcap", 0)
-
-
-
-    # 사전 수집된 지수 데이터 매칭
-
-    if benchmark_code == "AUTO":
-
-        curr_b_code = "KQ11" if mkt == "KOSDAQ" else "KS11"
-
-        df_bench = bench_dict.get(curr_b_code)
-
-    else:
-
-        df_bench = bench_dict.get(benchmark_code)
-
-
-
-    df_stock = get_market_data(code, search_start_date, analysis_date_str)
-
-
-
-    if df_bench is None or df_bench.empty or df_stock is None or df_stock.empty:
-
-        return None
-
-
-
-    common_dates = df_bench.index.intersection(df_stock.index)
-
-    df_b_filtered = df_bench.loc[common_dates]
-
-    df_s_filtered = df_stock.loc[common_dates]
-
-
-
-    if len(df_b_filtered) < 2 or len(df_s_filtered) < 2:
-
-        return None
-
-
-
-    # 지수 최저점(바닥일) 지정 또는 탐색
-
-    if filters.get("custom_trough_date"):
-
-        target_t_date = pd.Timestamp(filters["custom_trough_date"])
-
-        if target_t_date in df_b_filtered.index:
-
-            trough_date = target_t_date
-
-        else:
-
-            trough_date = df_b_filtered["Close"].idxmin()
-
-    else:
-
-        trough_date = df_b_filtered["Close"].idxmin()
-
-
-
-    base_bench_price = df_b_filtered.loc[trough_date, "Close"]
-
-    curr_bench_price = df_b_filtered["Close"].iloc[-1]
-
-
-
-    s_base = df_s_filtered.loc[trough_date, "Close"]
-
-    s_curr = df_s_filtered["Close"].iloc[-1]
-
-
-
-    if base_bench_price <= 0 or s_base <= 0:
-
-        return None
-
-
-
-    bench_growth = ((curr_bench_price / base_bench_price) - 1.0) * 100.0
-
-    stock_growth = ((s_curr / s_base) - 1.0) * 100.0
-
-
-
-    stock_factor = s_curr / s_base
-
-    bench_factor = curr_bench_price / base_bench_price
-
-    rel_strength = ((stock_factor / bench_factor) - 1.0) * 100.0
-
-
-
-    trading_val = s_curr * df_s_filtered["Volume"].iloc[-1]
-
-    max_vol = df_s_filtered["Volume"].max()
-
-    curr_vol = df_s_filtered["Volume"].iloc[-1]
-
-    vol_ratio = (curr_vol / max_vol * 100.0) if max_vol > 0 else 0.0
-
-
-
-    marcap_eok = marcap / 1e8 if marcap else 0
-
-    trading_val_eok = trading_val / 1e8
-
-
-
-    # 필터 체크
-
-    if filters["mc_min"] > 0 and marcap_eok < filters["mc_min"]:
-
-        return None
-
-    if filters["mc_max"] > 0 and marcap_eok > filters["mc_max"]:
-
-        return None
-
-    if filters["price_min"] > 0 and s_curr < filters["price_min"]:
-
-        return None
-
-    if filters["price_max"] > 0 and s_curr > filters["price_max"]:
-
-        return None
-
-    if filters["val_min"] > 0 and trading_val_eok < filters["val_min"]:
-
-        return None
-
-    if filters["val_max"] > 0 and trading_val_eok > filters["val_max"]:
-
-        return None
-
-    if filters["rs_min"] != 0.0 and rel_strength < filters["rs_min"]:
-
-        return None
-
-    if filters["rs_max"] != 0.0 and rel_strength > filters["rs_max"]:
-
-        return None
-
-    if filters["vol_ratio_min"] != 0.0 and vol_ratio < filters["vol_ratio_min"]:
-
-        return None
-
-    if filters["vol_ratio_max"] != 0.0 and vol_ratio > filters["vol_ratio_max"]:
-
-        return None
-
-
-
-    return {
-
-        "시장": mkt,
-
-        "종목명": name,
-
-        "시가총액(억)": int(marcap_eok) if marcap_eok > 0 else 0,
-
-        "현재가(원)": int(s_curr),
-
-        "거래대금(억)": int(trading_val_eok),
-
-        "종목수익률(%)": round(stock_growth, 2),
-
-        "거래량 비율(%)": round(vol_ratio, 1),
-
-        "상대강도(%)": round(rel_strength, 2),
-
-        "지수바닥일": trough_date.strftime("%Y-%m-%d"),
-
-        "_code": code,
-
-    }
-
-
-
+    code = row["Code"]
+    name = row["Name"]
+    mkt = row.get("Market", target_market)
+    marcap = row.get("Marcap", 0)
+
+    # 사전 수집된 지수 데이터 매칭
+    if benchmark_code == "AUTO":
+        curr_b_code = "KQ11" if mkt == "KOSDAQ" else "KS11"
+        df_bench = bench_dict.get(curr_b_code)
+    else:
+        df_bench = bench_dict.get(benchmark_code)
+
+    df_stock = get_market_data(code, search_start_date, analysis_date_str)
+
+    if df_bench is None or df_bench.empty or df_stock is None or df_stock.empty:
+        return None
+
+    common_dates = df_bench.index.intersection(df_stock.index)
+    df_b_filtered = df_bench.loc[common_dates]
+    df_s_filtered = df_stock.loc[common_dates]
+
+    if len(df_b_filtered) < 2 or len(df_s_filtered) < 2:
+        return None
+
+    # 지수 최저점(바닥일) 지정 또는 탐색
+    if filters.get("custom_trough_date"):
+        target_t_date = pd.Timestamp(filters["custom_trough_date"])
+        if target_t_date in df_b_filtered.index:
+            trough_date = target_t_date
+        else:
+            trough_date = df_b_filtered["Close"].idxmin()
+    else:
+        trough_date = df_b_filtered["Close"].idxmin()
+
+    base_bench_price = df_b_filtered.loc[trough_date, "Close"]
+    curr_bench_price = df_b_filtered["Close"].iloc[-1]
+
+    s_base = df_s_filtered.loc[trough_date, "Close"]
+    s_curr = df_s_filtered["Close"].iloc[-1]
+
+    if base_bench_price <= 0 or s_base <= 0:
+        return None
+
+    bench_growth = ((curr_bench_price / base_bench_price) - 1.0) * 100.0
+    stock_growth = ((s_curr / s_base) - 1.0) * 100.0
+
+    stock_factor = s_curr / s_base
+    bench_factor = curr_bench_price / base_bench_price
+    rel_strength = ((stock_factor / bench_factor) - 1.0) * 100.0
+
+    trading_val = s_curr * df_s_filtered["Volume"].iloc[-1]
+    max_vol = df_s_filtered["Volume"].max()
+    curr_vol = df_s_filtered["Volume"].iloc[-1]
+    vol_ratio = (curr_vol / max_vol * 100.0) if max_vol > 0 else 0.0
+
+    marcap_eok = marcap / 1e8 if marcap else 0
+    trading_val_eok = trading_val / 1e8
+
+    # 필터 체크
+    if filters["mc_min"] > 0 and marcap_eok < filters["mc_min"]:
+        return None
+    if filters["mc_max"] > 0 and marcap_eok > filters["mc_max"]:
+        return None
+    if filters["price_min"] > 0 and s_curr < filters["price_min"]:
+        return None
+    if filters["price_max"] > 0 and s_curr > filters["price_max"]:
+        return None
+    if filters["val_min"] > 0 and trading_val_eok < filters["val_min"]:
+        return None
+    if filters["val_max"] > 0 and trading_val_eok > filters["val_max"]:
+        return None
+    if filters["rs_min"] != 0.0 and rel_strength < filters["rs_min"]:
+        return None
+    if filters["rs_max"] != 0.0 and rel_strength > filters["rs_max"]:
+        return None
+    if filters["vol_ratio_min"] != 0.0 and vol_ratio < filters["vol_ratio_min"]:
+        return None
+    if filters["vol_ratio_max"] != 0.0 and vol_ratio > filters["vol_ratio_max"]:
+        return None
+
+    return {
+        "시장": mkt,
+        "종목명": name,
+        "시가총액(억)": int(marcap_eok) if marcap_eok > 0 else 0,
+        "현재가(원)": int(s_curr),
+        "거래대금(억)": int(trading_val_eok),
+        "종목수익률(%)": round(stock_growth, 2),
+        "거래량 비율(%)": round(vol_ratio, 1),
+        "상대강도(%)": round(rel_strength, 2),
+        "지수바닥일": trough_date.strftime("%Y-%m-%d"),
+        "_code": code,
+    }
 
 
 # --- 3. 사이드바 (상세 필터 설정) ---
-
 st.sidebar.header("🛠️ 상세 필터")
 
-
-
 top_n = st.sidebar.number_input(
-
-    "상위 N개 분석 제한 (시총 기준)", min_value=0, value=0, step=50
-
+    "상위 N개 분석 제한 (시총 기준)", min_value=0, value=0, step=50
 )
-
 if top_n > 0:
-
-    st.sidebar.caption(f"💡 설정값: 시총 상위 {top_n:,}개 종목만 분석")
-
+    st.sidebar.caption(f"💡 설정값: 시총 상위 {top_n:,}개 종목만 분석")
 else:
-
-    st.sidebar.caption("💡 설정값: 전체 종목 대상 분석 (제한 없음)")
-
-
+    st.sidebar.caption("💡 설정값: 전체 종목 대상 분석 (제한 없음)")
 
 st.sidebar.markdown("---")
-
-
 
 st.sidebar.subheader("시가총액 (억 원)")
-
 mc_col1, mc_col2 = st.sidebar.columns(2)
-
 with mc_col1:
-
-    mc_min = st.number_input("최소", min_value=0, value=0, step=100, key="mc_min")
-
+    mc_min = st.number_input("최소", min_value=0, value=0, step=100, key="mc_min")
 with mc_col2:
-
-    mc_max = st.number_input("최대", min_value=0, value=0, step=100, key="mc_max")
-
+    mc_max = st.number_input("최대", min_value=0, value=0, step=100, key="mc_max")
 if mc_min > 0 or mc_max > 0:
-
-    st.sidebar.caption(f"💡 범위: {mc_min:,}억 원 ~ {f'{mc_max:,}' if mc_max > 0 else '제한없음'}억 원")
-
-
+    st.sidebar.caption(f"💡 범위: {mc_min:,}억 원 ~ {f'{mc_max:,}' if mc_max > 0 else '제한없음'}억 원")
 
 st.sidebar.subheader("현재가 (원)")
-
 p_col1, p_col2 = st.sidebar.columns(2)
-
 with p_col1:
-
-    price_min = st.number_input("최소", min_value=0, value=0, step=500, key="p_min")
-
+    price_min = st.number_input("최소", min_value=0, value=0, step=500, key="p_min")
 with p_col2:
-
-    price_max = st.number_input("최대", min_value=0, value=0, step=1000, key="p_max")
-
+    price_max = st.number_input("최대", min_value=0, value=0, step=1000, key="p_max")
 if price_min > 0 or price_max > 0:
-
-    st.sidebar.caption(f"💡 범위: {price_min:,}원 ~ {f'{price_max:,}' if price_max > 0 else '제한없음'}원")
-
-
+    st.sidebar.caption(f"💡 범위: {price_min:,}원 ~ {f'{price_max:,}' if price_max > 0 else '제한없음'}원")
 
 st.sidebar.subheader("당일 거래대금 (억 원)")
-
 val_col1, val_col2 = st.sidebar.columns(2)
-
 with val_col1:
-
-    val_min = st.number_input("최소", min_value=0, value=0, step=10, key="v_min")
-
+    val_min = st.number_input("최소", min_value=0, value=0, step=10, key="v_min")
 with val_col2:
-
-    val_max = st.number_input("최대", min_value=0, value=0, step=10, key="v_max")
-
+    val_max = st.number_input("최대", min_value=0, value=0, step=10, key="v_max")
 if val_min > 0 or val_max > 0:
-
-    st.sidebar.caption(f"💡 범위: {val_min:,}억 원 ~ {f'{val_max:,}' if val_max > 0 else '제한없음'}억 원")
-
-
+    st.sidebar.caption(f"💡 범위: {val_min:,}억 원 ~ {f'{val_max:,}' if val_max > 0 else '제한없음'}억 원")
 
 st.sidebar.subheader("상대강도 RS (%)")
-
 rs_col1, rs_col2 = st.sidebar.columns(2)
-
 with rs_col1:
-
-    rs_min = st.number_input("최소", value=0.0, step=1.0, key="rs_min")
-
+    rs_min = st.number_input("최소", value=0.0, step=1.0, key="rs_min")
 with rs_col2:
-
-    rs_max = st.number_input("최대", value=0.0, step=1.0, key="rs_max")
-
+    rs_max = st.number_input("최대", value=0.0, step=1.0, key="rs_max")
 if rs_min != 0.0 or rs_max != 0.0:
-
-    st.sidebar.caption(f"💡 범위: {rs_min}% ~ {f'{rs_max}%' if rs_max != 0.0 else '제한없음'}")
-
-
+    st.sidebar.caption(f"💡 범위: {rs_min}% ~ {f'{rs_max}%' if rs_max != 0.0 else '제한없음'}")
 
 st.sidebar.subheader("거래량 비율 (%)")
-
 st.sidebar.caption("ℹ️ 기간 내 최고 거래량 대비 분석일 당일 거래량의 비율입니다.")
-
 vr_col1, vr_col2 = st.sidebar.columns(2)
-
 with vr_col1:
-
-    vol_ratio_min = st.number_input("최소", value=0.0, step=5.0, key="vr_min")
-
+    vol_ratio_min = st.number_input("최소", value=0.0, step=5.0, key="vr_min")
 with vr_col2:
-
-    vol_ratio_max = st.number_input("최대", value=0.0, step=5.0, key="vr_max")
-
+    vol_ratio_max = st.number_input("최대", value=0.0, step=5.0, key="vr_max")
 if vol_ratio_min != 0.0 or vol_ratio_max != 0.0:
-
-    st.sidebar.caption(f"💡 범위: {vol_ratio_min}% ~ {f'{vol_ratio_max}%' if vol_ratio_max != 0.0 else '제한없음'}")
-
-
+    st.sidebar.caption(f"💡 범위: {vol_ratio_min}% ~ {f'{vol_ratio_max}%' if vol_ratio_max != 0.0 else '제한없음'}")
 
 st.sidebar.markdown("---")
-
 use_custom_trough = st.sidebar.checkbox("지수 바닥일 수동 지정")
-
 custom_trough_date = None
-
 if use_custom_trough:
-
-    custom_trough_date = st.sidebar.date_input("바닥일 지정 날짜", value=datetime.today() - timedelta(days=30))
-
-
-
+    custom_trough_date = st.sidebar.date_input("바닥일 지정 날짜", value=datetime.today() - timedelta(days=30))
 
 
 # --- 4. 메인 탭 구성 ---
-
 tab1, tab2, tab3 = st.tabs(
-
-    ["📊 상대강도 분석", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
-
+    ["📊 상대강도 분석", "🔍 종목 상세 및 추이 차트", "📝 매매 복기 일지"]
 )
 
-
-
 # -------------------------------------------------------------------------
-
 # [탭 1] 상대강도 분석
-
 # -------------------------------------------------------------------------
-
 with tab1:
-
-    st.subheader("1. 시장 대비 상대강도 분석")
-
-
-
-    st.markdown("##### 📅 1구역: 날짜 및 기간 설정")
-
-    d_col1, d_col2, d_col3 = st.columns(3)
-
-
-
-    with d_col1:
-
-        analysis_date = st.date_input(
-
-            "분석일 (기본값: 오늘)", value=datetime.today(), help="분석의 종료 기준 날짜입니다."
-
-        )
-
-
-
-    with d_col2:
-
-        period_num = st.number_input(
-
-            "기간 숫자", min_value=1, max_value=365, value=52, help="분석일 기준 과거 탐색할 기간 숫자를 입력합니다."
-
-        )
-
-
-
-    with d_col3:
-
-        period_unit = st.selectbox(
-
-            "기간 단위", ["주 전", "일 전", "개월 전"]
-
-        )
-
-
-
-    st.markdown("##### 🎯 2구역: 대상 시장 및 지수 설정")
-
-    m_col1, m_col2 = st.columns(2)
-
-
-
-    with m_col1:
-
-        index_options = {
-
-            "[자동] 종목별 시장 지수 매칭 (KOSPI↔KS11, KOSDAQ↔KQ11)": "AUTO",
-
-            "코스피 (KS11)": "KS11",
-
-            "코스닥 (KQ11)": "KQ11",
-
-            "코스피 200 (KS200)": "KS200",
-
-            "KODEX 200 (069500)": "069500",
-
-            "코스닥 150 (229200)": "229200",
-
-        }
-
-        selected_idx_name = st.selectbox(
-
-            "기준 지수/ETF 선택", list(index_options.keys())
-
-        )
-
-        benchmark_code = index_options[selected_idx_name]
-
-
-
-    with m_col2:
-
-        market_type = st.selectbox(
-
-            "대상 시장", ["KRX (전체)", "KOSPI", "KOSDAQ"]
-
-        )
-
-
-
-    analysis_date_str = analysis_date.strftime("%Y-%m-%d")
-
-    if "일 전" in period_unit:
-
-        delta_days = period_num
-
-    elif "주 전" in period_unit:
-
-        delta_days = period_num * 7
-
-    else:
-
-        delta_days = period_num * 30
-
-
-
-    search_start_date = (analysis_date - timedelta(days=delta_days)).strftime("%Y-%m-%d")
-
-
-
-    st.markdown("---")
-
-
-
-    if st.button("🚀 분석 실행", type="primary"):
-
-        with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 분석 중입니다..."):
-
-            target_market = "KRX" if "전체" in market_type else market_type
-
-            df_krx = fdr.StockListing(target_market)
-
-
-
-            if top_n > 0:
-
-                df_krx = df_krx.head(top_n)
-
-
-
-            st.session_state["benchmark_code"] = benchmark_code
-
-            st.session_state["selected_idx_name"] = selected_idx_name
-
-            st.session_state["analysis_date_str"] = analysis_date_str
-
-            st.session_state["search_start_date"] = search_start_date
-
-
-
-            # 지수 데이터 사전 일괄 수집 (멀티스레드 안정성 확보)
-
-            bench_dict = {}
-
-            for b_code in ["KS11", "KQ11", "KS200", "069500", "229200"]:
-
-                b_df = get_market_data(b_code, search_start_date, analysis_date_str)
-
-                if b_df is not None:
-
-                    bench_dict[b_code] = b_df
-
-
-
-            filters = {
-
-                "mc_min": mc_min, "mc_max": mc_max,
-
-                "price_min": price_min, "price_max": price_max,
-
-                "val_min": val_min, "val_max": val_max,
-
-                "rs_min": rs_min, "rs_max": rs_max,
-
-                "vol_ratio_min": vol_ratio_min, "vol_ratio_max": vol_ratio_max,
-
-                "custom_trough_date": custom_trough_date.strftime("%Y-%m-%d") if custom_trough_date else None
-
-            }
-
-
-
-            results = []
-
-            rows = [row for _, row in df_krx.iterrows()]
-
-
-
-            # ⚡ 16개 동시 실행 병렬 연산 처리
-
-            with ThreadPoolExecutor(max_workers=16) as executor:
-
-                futures = [
-
-                    executor.submit(
-
-                        process_single_stock,
-
-                        row, target_market, benchmark_code, bench_dict,
-
-                        search_start_date, analysis_date_str, filters
-
-                    )
-
-                    for row in rows
-
-                ]
-
-
-
-                progress_bar = st.progress(0)
-
-                total_items = len(futures)
-
-
-
-                for idx, future in enumerate(as_completed(futures)):
-
-                    res = future.result()
-
-                    if res is not None:
-
-                        results.append(res)
-
-                    progress_bar.progress((idx + 1) / total_items)
-
-
-
-            if results:
-
-                df_result = pd.DataFrame(results)
-
-                # 상대강도 기준 내림차순 정렬
-
-                df_result = df_result.sort_values(by="상대강도(%)", ascending=False).reset_index(drop=True)
-
-                st.session_state["analysis_result"] = df_result
-
-                st.success(f"분석 완료! 조건에 맞는 총 {len(df_result)}개 종목이 검색되었습니다.")
-
-            else:
-
-                st.warning("조건에 맞는 종목 데이터를 찾지 못했습니다.")
-
-
+    st.subheader("1. 시장 대비 상대강도 분석")
+
+    st.markdown("##### 📅 1구역: 날짜 및 기간 설정")
+    d_col1, d_col2, d_col3 = st.columns(3)
+
+    with d_col1:
+        analysis_date = st.date_input(
+            "분석일 (기본값: 오늘)", value=datetime.today(), help="분석의 종료 기준 날짜입니다."
+        )
+
+    with d_col2:
+        period_num = st.number_input(
+            "기간 숫자", min_value=1, max_value=365, value=52, help="분석일 기준 과거 탐색할 기간 숫자를 입력합니다."
+        )
+
+    with d_col3:
+        period_unit = st.selectbox(
+            "기간 단위", ["주 전", "일 전", "개월 전"]
+        )
+
+    st.markdown("##### 🎯 2구역: 대상 시장 및 지수 설정")
+    m_col1, m_col2 = st.columns(2)
+
+    with m_col1:
+        index_options = {
+            "[자동] 종목별 시장 지수 매칭 (KOSPI↔KS11, KOSDAQ↔KQ11)": "AUTO",
+            "코스피 (KS11)": "KS11",
+            "코스닥 (KQ11)": "KQ11",
+            "코스피 200 (KS200)": "KS200",
+            "KODEX 200 (069500)": "069500",
+            "코스닥 150 (229200)": "229200",
+        }
+        selected_idx_name = st.selectbox(
+            "기준 지수/ETF 선택", list(index_options.keys())
+        )
+        benchmark_code = index_options[selected_idx_name]
+
+    with m_col2:
+        market_type = st.selectbox(
+            "대상 시장", ["KRX (전체)", "KOSPI", "KOSDAQ"]
+        )
+
+    analysis_date_str = analysis_date.strftime("%Y-%m-%d")
+    if "일 전" in period_unit:
+        delta_days = period_num
+    elif "주 전" in period_unit:
+        delta_days = period_num * 7
+    else:
+        delta_days = period_num * 30
+
+    search_start_date = (analysis_date - timedelta(days=delta_days)).strftime("%Y-%m-%d")
+
+    st.markdown("---")
+
+    if st.button("🚀 분석 실행", type="primary"):
+        with st.spinner("⚡ 초고속 멀티스레딩 엔진으로 전 종목을 실시간 분석 중입니다..."):
+            target_market = "KRX" if "전체" in market_type else market_type
+            df_krx = fdr.StockListing(target_market)
+
+            if top_n > 0:
+                df_krx = df_krx.head(top_n)
+
+            st.session_state["benchmark_code"] = benchmark_code
+            st.session_state["selected_idx_name"] = selected_idx_name
+            st.session_state["analysis_date_str"] = analysis_date_str
+            st.session_state["search_start_date"] = search_start_date
+
+            # 지수 데이터 사전 일괄 수집 (멀티스레드 안정성 확보)
+            bench_dict = {}
+            for b_code in ["KS11", "KQ11", "KS200", "069500", "229200"]:
+                b_df = get_market_data(b_code, search_start_date, analysis_date_str)
+                if b_df is not None:
+                    bench_dict[b_code] = b_df
+
+            filters = {
+                "mc_min": mc_min, "mc_max": mc_max,
+                "price_min": price_min, "price_max": price_max,
+                "val_min": val_min, "val_max": val_max,
+                "rs_min": rs_min, "rs_max": rs_max,
+                "vol_ratio_min": vol_ratio_min, "vol_ratio_max": vol_ratio_max,
+                "custom_trough_date": custom_trough_date.strftime("%Y-%m-%d") if custom_trough_date else None
+            }
+
+            results = []
+            rows = [row for _, row in df_krx.iterrows()]
+
+            # ⚡ 16개 동시 실행 병렬 연산 처리
+            with ThreadPoolExecutor(max_workers=16) as executor:
+                futures = [
+                    executor.submit(
+                        process_single_stock,
+                        row, target_market, benchmark_code, bench_dict,
+                        search_start_date, analysis_date_str, filters
+                    )
+                    for row in rows
+                ]
+
+                progress_bar = st.progress(0)
+                total_items = len(futures)
+
+                for idx, future in enumerate(as_completed(futures)):
+                    res = future.result()
+                    if res is not None:
+                        results.append(res)
+                    progress_bar.progress((idx + 1) / total_items)
+
+            if results:
+                df_result = pd.DataFrame(results)
+                # 상대강도 기준 내림차순 정렬
+                df_result = df_result.sort_values(by="상대강도(%)", ascending=False).reset_index(drop=True)
+                st.session_state["analysis_result"] = df_result
+                st.success(f"분석 완료! 조건에 맞는 총 {len(df_result)}개 종목이 검색되었습니다.")
+            else:
+                st.warning("조건에 맞는 종목 데이터를 찾지 못했습니다.")
 
 if "analysis_result" in st.session_state:
-    df_res = st.session_state["analysis_result"]
-    st.subheader("📋 분석 결과 목록")
-    st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
-    
-    display_cols = [col for col in df_res.columns if col != "_code"]
-    
-    # --- 엑셀 파일(.xlsx) 생성 및 다운로드 버튼 추가 ---
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_res[display_cols].to_excel(writer, index=False, sheet_name='주도주분석결과')
-        
-        workbook = writer.book
-        worksheet = writer.sheets['주도주분석결과']
-        
-        worksheet.auto_filter.ref = worksheet.dimensions
-        
-        for col in worksheet.columns:
-            max_len = 0
-            col_letter = get_column_letter(col[0].column)
-            for cell in col:
-                try:
-                    if cell.value is not None:
-                        max_len = max(max_len, len(str(cell.value)))
-                except:
-                    pass
-            worksheet.column_dimensions[col_letter].width = max(max_len + 5, 14)
+        df_res = st.session_state["analysis_result"]
+        st.subheader("📋 분석 결과 목록")
+        st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
+        
+        display_cols = [col for col in df_res.columns if col != "_code"]
+        
+        # --- 엑셀 파일(.xlsx) 생성 및 다운로드 버튼 추가 ---
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_res[display_cols].to_excel(writer, index=False, sheet_name='주도주분석결과')
+            
+            # openpyxl을 통한 스타일링 (필터 추가 및 열 너비 자동 조절)
+            workbook = writer.book
+            worksheet = writer.sheets['주도주분석결과']
+            
+            # 1. 첫 번째 행(헤더)에 자동 필터(Auto Filter) 추가먼저 설정
+            worksheet.auto_filter.ref = worksheet.dimensions
+            
+            # 2. 데이터 길이에 맞춰 열 너비(Width) 자동 조절 (필터 화살표가 글자를 가리지 않도록 여유 공간 부여)
+            for col in worksheet.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    try:
+                        if cell.value is not None:
+                            # 쉼표가 들어간 숫자의 경우 길이 계산을 고려하여 문자열 변환 길이 사용
+                            max_len = max(max_len, len(str(cell.value)))
+                    except:
+                        pass
+                # 필터 공간 확보를 위해 여유를 넉넉히 줌 (최소 14)
+                worksheet.column_dimensions[col_letter].width = max(max_len + 5, 14)
 
-            header_name = worksheet.cell(row=1, column=col[0].column).value
-            if header_name in ["시가총액(억)", "현재가(원)", "거래대금(억)"]:
-                for cell in col[1:]:
-                    cell.number_format = '#,##0'
+                # 숫자 포맷 적용 (시가총액, 현재가, 거래대금)
+                header_name = worksheet.cell(row=1, column=col[0].column).value
+                if header_name in ["시가총액(억)", "현재가(원)", "거래대금(억)"]:
+                    for cell in col[1:]:
+                        cell.number_format = '#,##0'
 
-    excel_data = output.getvalue()
+        excel_data = output.getvalue()
 
-    d_col1, d_col2 = st.columns([3, 1])
-    with d_col2:
-        st.download_button(
-            label="📥 엑셀로 다운로드 (.xlsx)",
-            data=excel_data,
-            file_name=f"market_analysis_{datetime.today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        # 다운로드 버튼 배치
+        d_col1, d_col2 = st.columns([3, 1])
+        with d_col2:
+            st.download_button(
+                label="📥 엑셀로 다운로드 (.xlsx)",
+                data=excel_data,
+                file_name=f"market_analysis_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
-    # 화면 출력용 데이터프레임 (숫자형으로 유지하여 정렬 기능 보장)
-    df_display = df_res[display_cols].copy()
-    for col in ["시가총액(억)", "현재가(원)", "거래대금(억)", "종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]:
-        if col in df_display.columns:
-            df_display[col] = pd.to_numeric(df_display[col], errors='coerce')
+# 화면 출력용 데이터프레임 (숫자형으로 강제 변환하여 콤마가 정상 출력되도록 처리)
+        for col in ["시가총액(억)", "현재가(원)", "거래대금(억)", "종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]:
+            if col in df_res.columns:
+                df_res[col] = pd.to_numeric(df_res[col], errors='coerce')
 
-    # 화면에 출력 (column_config를 이용해 숫자 정렬은 유지하면서 콤마와 % 표시)
-    st.dataframe(
-        df_display,
-        use_container_width=True,
-        column_config={
-            "시가총액(억)": st.column_config.NumberColumn("시가총액(억)", format="#,##0"),
-            "현재가(원)": st.column_config.NumberColumn("현재가(원)", format="#,##0"),
-            "거래대금(억)": st.column_config.NumberColumn("거래대금(억)", format="#,##0"),
-            "종목수익률(%)": st.column_config.NumberColumn("종목수익률(%)", format="%.2f%%"),
-            "거래량 비율(%)": st.column_config.NumberColumn("거래량 비율(%)", format="%.1f%%"),
-            "상대강도(%)": st.column_config.NumberColumn("상대강도(%)", format="%.2f%%"),
-        }
-    )
+# [여기에 붙여넣기] 화면에 표를 띄우기 전에 데이터를 먼저 콤마 낀 문자열로 변환합니다.
+        df_display = df_res[display_cols].copy()
 
+        # 시가총액, 현재가, 거래대금에 천 단위 콤마(,) 넣기
+        int_cols = ["시가총액(억)", "현재가(원)", "거래대금(억)"]
+        for col in int_cols:
+            if col in df_display.columns:
+                df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).astype(int).map('{:,}'.format)
+
+        # 수익률 같은 소수점 컬럼 포맷 맞추기
+        float_cols = ["종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]
+        for col in float_cols:
+            if col in df_display.columns:
+                df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).map('{:.2f}%'.format)
+
+        # 화면에 출력
+        st.dataframe(
+            df_display,
+            use_container_width=True
+        )
 
 
 # -------------------------------------------------------------------------
-
 # [탭 2] 종목 상세 및 추이 차트
-
 # -------------------------------------------------------------------------
-
 with tab2:
-
-    st.subheader("2. 종목별 상세 추이 분석 (2단 비교 차트)")
-
-
-
-    on_state:
-
-        df_target = st.session_state["analysis_result"]
-
-        
-
-        c1, c2 = st.columns([2, 1])
-
-        with c1:
-
-            selected_name = st.selectbox("분석할 종목 선택", df_target["종목명"].tolist())
-
-        with c2:
-
-            chart_bench_option = st.selectbox(
-
-                "비교 기준 지수 변경",
-
-                ["[자동] 종목 시장에 매칭", "코스피 (KS11)", "코스닥 (KQ11)", "KODEX 200 (069500)"],
-
-            )
-
-
-
-        if selected_name:
-
-            target_row = df_target[df_target["종목명"] == selected_name].iloc[0]
-
-            t_code = target_row["_code"]
-
-            t_mkt = target_row["시장"]
-
-
-
-            if st.button("📊 상세 추이 차트 그리기", type="primary"):
-
-                with st.spinner("차트 데이터를 계산 중입니다..."):
-
-                    s_date_str = st.session_state.get("search_start_date", search_start_date)
-
-                    e_date_str = st.session_state.get("analysis_date_str", analysis_date_str)
-
-
-
-                    # 선택한 지수에 따라 dynamic 코드 할당
-
-                    if "자동" in chart_bench_option:
-
-                        ch_b_code = "KQ11" if t_mkt == "KOSDAQ" else "KS11"
-
-                        ch_b_name = "KOSDAQ" if t_mkt == "KOSDAQ" else "KOSPI"
-
-                    elif "KS11" in chart_bench_option:
-
-                        ch_b_code, ch_b_name = "KS11", "KOSPI"
-
-                    elif "KQ11" in chart_bench_option:
-
-                        ch_b_code, ch_b_name = "KQ11", "KOSDAQ"
-
-                    else:
-
-                        ch_b_code, ch_b_name = "069500", "KODEX 200"
-
-
-
-                    df_s = get_market_data(t_code, s_date_str, e_date_str)
-
-                    df_b = get_market_data(ch_b_code, s_date_str, e_date_str)
-
-
-
-                    if df_s is not None and df_b is not None:
-
-                        common_idx = df_s.index.intersection(df_b.index)
-
-                        df_s = df_s.loc[common_idx]
-
-                        df_b = df_b.loc[common_idx]
-
-
-
-                        # 선택된 지수(df_b)의 실제 최저점 날짜를 새로 계산하여 동기화
-
-                        if custom_trough_date and pd.Timestamp(custom_trough_date) in common_idx:
-
-                            chart_trough_dt = pd.Timestamp(custom_trough_date)
-
-                        else:
-
-                            chart_trough_dt = df_b["Close"].idxmin()
-
-                        
-
-                        chart_trough_str = chart_trough_dt.strftime("%Y-%m-%d")
-
-
-
-                        if not df_s.empty and chart_trough_dt in common_idx:
-
-                            s_trough_price = df_s.loc[chart_trough_dt, "Close"]
-
-                            b_trough_price = df_b.loc[chart_trough_dt, "Close"]
-
-
-
-                            stock_cum_ret = (df_s["Close"] / s_trough_price - 1.0) * 100
-
-                            bench_cum_ret = (df_b["Close"] / b_trough_price - 1.0) * 100
-
-
-
-                            stock_factor = df_s["Close"] / s_trough_price
-
-                            bench_factor = df_b["Close"] / b_trough_price
-
-                            rs_trend = ((stock_factor / bench_factor) - 1.0) * 100
-
-
-
-                            curr_chart_rs = rs_trend.iloc[-1]
-
-                            st.write(
-
-                                f"**선택 종목:** {selected_name} ({t_code}) | **현재가:** {target_row['현재가(원)']:,.0f}원 | **선택 지수:** {ch_b_name} | **지수 바닥일:** {chart_trough_str} | **지수 대비 상대강도:** {curr_chart_rs:.2f}%"
-
-                            )
-
-
-
-                            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-
-
-
-                            ax1.plot(common_idx, stock_cum_ret, label=f"Stock ({selected_name})", color="crimson", linewidth=2)
-
-                            ax1.plot(common_idx, bench_cum_ret, label=f"Index ({ch_b_name})", color="dodgerblue", linewidth=2, linestyle="--")
-
-                            ax1.axvline(chart_trough_dt, color="purple", linestyle=":", alpha=0.8, label=f"Base Date ({chart_trough_str})")
-
-                            ax1.set_title(f"Cumulative Return Comparison (%) from Base Date ({ch_b_name} Trough: {chart_trough_str})")
-
-                            ax1.set_ylabel("Return (%)")
-
-                            ax1.legend()
-
-                            ax1.grid(True, alpha=0.3)
-
-
-
-                            ax2.plot(common_idx, rs_trend, label="Relative Strength Trend (%)", color="forestgreen", linewidth=2)
-
-                            ax2.axhline(0, color="gray", linestyle=":", alpha=0.7)
-
-                            ax2.axvline(chart_trough_dt, color="purple", linestyle=":", alpha=0.8)
-
-                            ax2.set_title("Relative Strength Trend (Upward = Stronger Lead)")
-
-                            ax2.set_ylabel("Relative Strength (%)")
-
-                            ax2.set_xlabel("Date")
-
-                            ax2.legend()
-
-                            ax2.grid(True, alpha=0.3)
-
-
-
-                            plt.tight_layout()
-
-                            st.pyplot(fig)
-
-                        else:
-
-                            st.error("지수 바닥일 시점의 데이터를 불러오지 못했습니다.")
-
-    else:
-
-        st.info("먼저 [탭 1]에서 '분석 실행'을 진행하여 종목 리스트를 생성해 주세요.")
-
-
-
+    st.subheader("2. 종목별 상세 추이 분석 (2단 비교 차트)")
+
+    if "analysis_result" in st.session_state:
+        df_target = st.session_state["analysis_result"]
+        
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            selected_name = st.selectbox("분석할 종목 선택", df_target["종목명"].tolist())
+        with c2:
+            chart_bench_option = st.selectbox(
+                "비교 기준 지수 변경",
+                ["[자동] 종목 시장에 매칭", "코스피 (KS11)", "코스닥 (KQ11)", "KODEX 200 (069500)"],
+            )
+
+        if selected_name:
+            target_row = df_target[df_target["종목명"] == selected_name].iloc[0]
+            t_code = target_row["_code"]
+            t_mkt = target_row["시장"]
+
+            if st.button("📊 상세 추이 차트 그리기", type="primary"):
+                with st.spinner("차트 데이터를 계산 중입니다..."):
+                    s_date_str = st.session_state.get("search_start_date", search_start_date)
+                    e_date_str = st.session_state.get("analysis_date_str", analysis_date_str)
+
+                    # 선택한 지수에 따라 dynamic 코드 할당
+                    if "자동" in chart_bench_option:
+                        ch_b_code = "KQ11" if t_mkt == "KOSDAQ" else "KS11"
+                        ch_b_name = "KOSDAQ" if t_mkt == "KOSDAQ" else "KOSPI"
+                    elif "KS11" in chart_bench_option:
+                        ch_b_code, ch_b_name = "KS11", "KOSPI"
+                    elif "KQ11" in chart_bench_option:
+                        ch_b_code, ch_b_name = "KQ11", "KOSDAQ"
+                    else:
+                        ch_b_code, ch_b_name = "069500", "KODEX 200"
+
+                    df_s = get_market_data(t_code, s_date_str, e_date_str)
+                    df_b = get_market_data(ch_b_code, s_date_str, e_date_str)
+
+                    if df_s is not None and df_b is not None:
+                        common_idx = df_s.index.intersection(df_b.index)
+                        df_s = df_s.loc[common_idx]
+                        df_b = df_b.loc[common_idx]
+
+                        # 선택된 지수(df_b)의 실제 최저점 날짜를 새로 계산하여 동기화
+                        if custom_trough_date and pd.Timestamp(custom_trough_date) in common_idx:
+                            chart_trough_dt = pd.Timestamp(custom_trough_date)
+                        else:
+                            chart_trough_dt = df_b["Close"].idxmin()
+                        
+                        chart_trough_str = chart_trough_dt.strftime("%Y-%m-%d")
+
+                        if not df_s.empty and chart_trough_dt in common_idx:
+                            s_trough_price = df_s.loc[chart_trough_dt, "Close"]
+                            b_trough_price = df_b.loc[chart_trough_dt, "Close"]
+
+                            stock_cum_ret = (df_s["Close"] / s_trough_price - 1.0) * 100
+                            bench_cum_ret = (df_b["Close"] / b_trough_price - 1.0) * 100
+
+                            stock_factor = df_s["Close"] / s_trough_price
+                            bench_factor = df_b["Close"] / b_trough_price
+                            rs_trend = ((stock_factor / bench_factor) - 1.0) * 100
+
+                            curr_chart_rs = rs_trend.iloc[-1]
+                            st.write(
+                                f"**선택 종목:** {selected_name} ({t_code}) | **현재가:** {target_row['현재가(원)']:,.0f}원 | **선택 지수:** {ch_b_name} | **지수 바닥일:** {chart_trough_str} | **지수 대비 상대강도:** {curr_chart_rs:.2f}%"
+                            )
+
+                            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+                            ax1.plot(common_idx, stock_cum_ret, label=f"Stock ({selected_name})", color="crimson", linewidth=2)
+                            ax1.plot(common_idx, bench_cum_ret, label=f"Index ({ch_b_name})", color="dodgerblue", linewidth=2, linestyle="--")
+                            ax1.axvline(chart_trough_dt, color="purple", linestyle=":", alpha=0.8, label=f"Base Date ({chart_trough_str})")
+                            ax1.set_title(f"Cumulative Return Comparison (%) from Base Date ({ch_b_name} Trough: {chart_trough_str})")
+                            ax1.set_ylabel("Return (%)")
+                            ax1.legend()
+                            ax1.grid(True, alpha=0.3)
+
+                            ax2.plot(common_idx, rs_trend, label="Relative Strength Trend (%)", color="forestgreen", linewidth=2)
+                            ax2.axhline(0, color="gray", linestyle=":", alpha=0.7)
+                            ax2.axvline(chart_trough_dt, color="purple", linestyle=":", alpha=0.8)
+                            ax2.set_title("Relative Strength Trend (Upward = Stronger Lead)")
+                            ax2.set_ylabel("Relative Strength (%)")
+                            ax2.set_xlabel("Date")
+                            ax2.legend()
+                            ax2.grid(True, alpha=0.3)
+
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                        else:
+                            st.error("지수 바닥일 시점의 데이터를 불러오지 못했습니다.")
+    else:
+        st.info("먼저 [탭 1]에서 '분석 실행'을 진행하여 종목 리스트를 생성해 주세요.")
 
 
 # -------------------------------------------------------------------------
-
 # [탭 3] 매매 복기 및 차트 게시판 (일지 & 백업)
-
 # -------------------------------------------------------------------------
-
 with tab3:
+    st.subheader("3. 나만의 매매 일지 및 차트 복기 게시판")
+
+    notes = load_notes()
+
+    with st.form("note_form", clear_on_submit=True):
+        f_col1, f_col2, f_col3 = st.columns(3)
+        with f_col1:
+            note_date = st.date_input("작성일자", value=datetime.today())
+        with f_col2:
+            note_title = st.text_input("종목명 또는 제목", placeholder="예: 삼성전자 매매 복기")
+        with f_col3:
+            note_category = st.selectbox(
+                "카테고리", ["매매복기", "관심종목 아이디어", "시장트렌드 메모", "기타"]
+            )
+
+        note_content = st.text_area(
+            "상세 내용 (진입 근거, 심리, 배운 점 등)", placeholder="자세한 일기를 적어보세요..."
+        )
+        uploaded_image = st.file_uploader(
+            "차트 캡처 이미지 첨부 (PNG, JPG)", type=["png", "jpg", "jpeg"]
+        )
+
+        submitted = st.form_submit_button("📝 일지 저장하기")
+
+        if submitted:
+            if not note_title.strip():
+                st.warning("종목명 또는 제목을 입력해주세요.")
+            else:
+                img_base64 = ""
+                if uploaded_image is not None:
+                    bytes_data = uploaded_image.getvalue()
+                    img_base64 = base64.b64encode(bytes_data).decode("utf-8")
+
+                new_note = {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S"),
+                    "date": str(note_date),
+                    "title": note_title,
+                    "category": note_category,
+                    "content": note_content,
+                    "image": img_base64,
+                }
+                notes.insert(0, new_note)
+                save_notes(notes)
+                st.success("매매 일지가 안전하게 저장되었습니다!")
+                st.rerun()
+
+    st.markdown("---")
+    st.subheader("📁 저장된 일지 목록 보기")
+
+    if not notes:
+        st.info("아직 작성된 매매 일지가 없습니다. 위 폼을 채워 첫 일지를 작성해 보세요!")
+    else:
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            json_str = json.dumps(notes, ensure_ascii=False, indent=4)
+            st.download_button(
+                label="📥 내 모든 일지 백업 파일(JSON) 다운로드",
+                data=json_str,
+                file_name=f"trade_notes_backup_{datetime.today().strftime('%Y%m%d')}.json",
+                mime="application/json",
+            )
+        with b_col2:
+            uploaded_backup = st.file_uploader(
+                "📤 백업 파일 업로드하여 복구하기", type=["json"]
+            )
+            if uploaded_backup is not None:
+                try:
+                    restored_notes = json.load(uploaded_backup)
+                    save_notes(restored_notes)
+                    st.success("백업 파일이 성공적으로 복구되었습니다!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"복구 중 오류가 발생했습니다: {e}")
+
+        st.markdown("### 📋 일지 리스트")
+        for i, note in enumerate(notes):
+            with st.expander(f"[{note['category']}] {note['date']} - {note['title']}"):
+                st.write(f"**작성일:** {note['date']}")
+                st.write(f"**내용:**\n\n{note['content']}")
+
+                if note.get("image"):
+                    try:
+                        img_bytes = base64.b64decode(note["image"])
+                        st.image(img_bytes, caption="첨부된 차트 캡처", use_column_width=True)
+                    except Exception:
+                        st.warning("이미지를 불러오는 중 오류가 발생했습니다.")
+
+                if st.button("🗑️ 이 일지 삭제하기", key=f"del_{note['id']}"):
+                    notes.pop(i)
+                    save_notes(notes)
+                    st.success("일지가 삭제되었습니다.")
+                    st.rerun()
 
-    st.subheader("3. 나만의 매매 일지 및 차트 복기 게시판")
-
-
-
-    notes = load_notes()
-
-
-
-    with st.form("note_form", clear_on_submit=True):
-
-        f_col1, f_col2, f_col3 = st.columns(3)
-
-        with f_col1:
-
-            note_date = st.date_input("작성일자", value=datetime.today())
-
-        with f_col2:
-
-            note_title = st.text_input("종목명 또는 제목", placeholder="예: 삼성전자 매매 복기")
-
-        with f_col3:
-
-            note_category = st.selectbox(
-
-                "카테고리", ["매매복기", "관심종목 아이디어", "시장트렌드 메모", "기타"]
-
-            )
-
-
-
-        note_content = st.text_area(
-
-            "상세 내용 (진입 근거, 심리, 배운 점 등)", placeholder="자세한 일기를 적어보세요..."
-
-        )
-
-        uploaded_image = st.file_uploader(
-
-            "차트 캡처 이미지 첨부 (PNG, JPG)", type=["png", "jpg", "jpeg"]
-
-        )
-
-
-
-        submitted = st.form_submit_button("📝 일지 저장하기")
-
-
-
-        if submitted:
-
-            if not note_title.strip():
-
-                st.warning("종목명 또는 제목을 입력해주세요.")
-
-            else:
-
-                img_base64 = ""
-
-                if uploaded_image is not None:
-
-                    bytes_data = uploaded_image.getvalue()
-
-                    img_base64 = base64.b64encode(bytes_data).decode("utf-8")
-
-
-
-                new_note = {
-
-                    "id": datetime.now().strftime("%Y%m%d%H%M%S"),
-
-                    "date": str(note_date),
-
-                    "title": note_title,
-
-                    "category": note_category,
-
-                    "content": note_content,
-
-                    "image": img_base64,
-
-                }
-
-                notes.insert(0, new_note)
-
-                save_notes(notes)
-
-                st.success("매매 일지가 안전하게 저장되었습니다!")
-
-                st.rerun()
-
-
-
-    st.markdown("---")
-
-    st.subheader("📁 저장된 일지 목록 보기")
-
-
-
-    if not notes:
-
-        st.info("아직 작성된 매매 일지가 없습니다. 위 폼을 채워 첫 일지를 작성해 보세요!")
-
-    else:
-
-        b_col1, b_col2 = st.columns(2)
-
-        with b_col1:
-
-            json_str = json.dumps(notes, ensure_ascii=False, indent=4)
-
-            st.download_button(
-
-                label="📥 내 모든 일지 백업 파일(JSON) 다운로드",
-
-                data=json_str,
-
-                file_name=f"trade_notes_backup_{datetime.today().strftime('%Y%m%d')}.json",
-
-                mime="application/json",
-
-            )
-
-        with b_col2:
-
-            uploaded_backup = st.file_uploader(
-
-                "📤 백업 파일 업로드하여 복구하기", type=["json"]
-
-            )
-
-            if uploaded_backup is not None:
-
-                try:
-
-                    restored_notes = json.load(uploaded_backup)
-
-                    save_notes(restored_notes)
-
-                    st.success("백업 파일이 성공적으로 복구되었습니다!")
-
-                    st.rerun()
-
-                except Exception as e:
-
-                    st.error(f"복구 중 오류가 발생했습니다: {e}")
-
-
-
-        st.markdown("### 📋 일지 리스트")
-
-        for i, note in enumerate(notes):
-
-            with st.expander(f"[{note['category']}] {note['date']} - {note['title']}"):
-
-                st.write(f"**작성일:** {note['date']}")
-
-                st.write(f"**내용:**\n\n{note['content']}")
-
-
-
-                if note.get("image"):
-
-                    try:
-
-                        img_bytes = base64.b64decode(note["image"])
-
-                        st.image(img_bytes, caption="첨부된 차트 캡처", use_column_width=True)
-
-                    except Exception:
-
-                        st.warning("이미지를 불러오는 중 오류가 발생했습니다.")
-
-
-
-                if st.button("🗑️ 이 일지 삭제하기", key=f"del_{note['id']}"):
-
-                    notes.pop(i)
-
-                    save_notes(notes)
-
-                    st.success("일지가 삭제되었습니다.")
-
-                    st.rerun()
