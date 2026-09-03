@@ -425,7 +425,7 @@ if "analysis_result" in st.session_state:
                 use_container_width=True
             )
 
-        # 화면 출력용 데이터프레임 (천단위 콤마 및 포맷 적용)
+# 화면 출력용 데이터프레임 (천단위 콤마 및 포맷 적용)
         st.dataframe(
             df_res[display_cols],
             column_config={
