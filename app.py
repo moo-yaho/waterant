@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import io
+import openpyxl
+from openpyxl.utils import get_column_letter
+
 
 # --- 0. 한글 폰트 자동 설정 (차트 한글 깨짐 방지) ---
 @st.cache_resource
@@ -369,11 +373,52 @@ with tab1:
             else:
                 st.warning("조건에 맞는 종목 데이터를 찾지 못했습니다.")
 
-    if "analysis_result" in st.session_state:
+if "analysis_result" in st.session_state:
         df_res = st.session_state["analysis_result"]
         st.subheader("📋 분석 결과 목록")
         st.caption("ℹ️ 거래량 비율(%) = 기간 내 최고 거래량 대비 분석일 당일 거래량 비율")
+        
         display_cols = [col for col in df_res.columns if col != "_code"]
+        
+        # --- 엑셀 파일(.xlsx) 생성 및 다운로드 버튼 추가 ---
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_res[display_cols].to_excel(writer, index=False, sheet_name='주도주분석결과')
+            
+            # openpyxl을 통한 스타일링 (열 너비 자동 조절 및 필터 추가)
+            workbook = writer.book
+            worksheet = writer.sheets['주도주분석결과']
+            
+            # 1. 첫 번째 행(헤더)에 자동 필터(Auto Filter) 추가
+            worksheet.auto_filter.ref = worksheet.dimensions
+            
+            # 2. 데이터 길이에 맞춰 열 너비(Width) 자동 조절
+            for col in worksheet.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    try:
+                        if cell.value:
+                            max_len = max(max_len, len(str(cell.value)))
+                    except:
+                        pass
+                # 여유 공간을 주어 너무 딱 붙지 않게 설정 (최소 12)
+                worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+        excel_data = output.getvalue()
+
+        # 다운로드 버튼 배치 (컬럼을 나눠서 우측 상단에 배치하면 깔끔합니다)
+        d_col1, d_col2 = st.columns([3, 1])
+        with d_col2:
+            st.download_button(
+                label="📥 엑셀로 다운로드 (.xlsx)",
+                data=excel_data,
+                file_name=f"market_analysis_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        # 화면 출력용 데이터프레임
         st.dataframe(
             df_res[display_cols],
             column_config={
