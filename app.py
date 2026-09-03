@@ -425,7 +425,11 @@ if "analysis_result" in st.session_state:
                 use_container_width=True
             )
 
-# 화면 출력용 데이터프레임 (천단위 콤마 및 포맷 적용)
+# 화면 출력용 데이터프레임 (숫자형으로 강제 변환하여 콤마가 정상 출력되도록 처리)
+        for col in ["시가총액(억)", "현재가(원)", "거래대금(억)", "종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]:
+            if col in df_res.columns:
+                df_res[col] = pd.to_numeric(df_res[col], errors='coerce')
+
         st.dataframe(
             df_res[display_cols],
             column_config={
