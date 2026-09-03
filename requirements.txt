@@ -3,3 +3,4 @@ finance-datareader
 matplotlib
 pandas
 numpy
+openpyxl
