@@ -172,9 +172,9 @@ def process_single_stock(row, target_market, benchmark_code, bench_dict, search_
     return {
         "시장": mkt,
         "종목명": name,
-        "시가총액(억)": marcap_eok if marcap_eok > 0 else 0,
-        "현재가(원)": s_curr,
-        "거래대금(억)": trading_val_eok,
+        "시가총액(억)": int(marcap_eok) if marcap_eok > 0 else 0,
+        "현재가(원)": int(s_curr),
+        "거래대금(억)": int(trading_val_eok),
         "종목수익률(%)": round(stock_growth, 2),
         "거래량 비율(%)": round(vol_ratio, 1),
         "상대강도(%)": round(rel_strength, 2),
@@ -385,29 +385,36 @@ if "analysis_result" in st.session_state:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_res[display_cols].to_excel(writer, index=False, sheet_name='주도주분석결과')
             
-            # openpyxl을 통한 스타일링 (열 너비 자동 조절 및 필터 추가)
+            # openpyxl을 통한 스타일링 (필터 추가 및 열 너비 자동 조절)
             workbook = writer.book
             worksheet = writer.sheets['주도주분석결과']
             
-            # 1. 첫 번째 행(헤더)에 자동 필터(Auto Filter) 추가
+            # 1. 첫 번째 행(헤더)에 자동 필터(Auto Filter) 추가먼저 설정
             worksheet.auto_filter.ref = worksheet.dimensions
             
-            # 2. 데이터 길이에 맞춰 열 너비(Width) 자동 조절
+            # 2. 데이터 길이에 맞춰 열 너비(Width) 자동 조절 (필터 화살표가 글자를 가리지 않도록 여유 공간 부여)
             for col in worksheet.columns:
                 max_len = 0
                 col_letter = get_column_letter(col[0].column)
                 for cell in col:
                     try:
-                        if cell.value:
+                        if cell.value is not None:
+                            # 쉼표가 들어간 숫자의 경우 길이 계산을 고려하여 문자열 변환 길이 사용
                             max_len = max(max_len, len(str(cell.value)))
                     except:
                         pass
-                # 여유 공간을 주어 너무 딱 붙지 않게 설정 (최소 12)
-                worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
+                # 필터 공간 확보를 위해 여유를 넉넉히 줌 (최소 14)
+                worksheet.column_dimensions[col_letter].width = max(max_len + 5, 14)
+
+                # 숫자 포맷 적용 (시가총액, 현재가, 거래대금)
+                header_name = worksheet.cell(row=1, column=col[0].column).value
+                if header_name in ["시가총액(억)", "현재가(원)", "거래대금(억)"]:
+                    for cell in col[1:]:
+                        cell.number_format = '#,##0'
 
         excel_data = output.getvalue()
 
-        # 다운로드 버튼 배치 (컬럼을 나눠서 우측 상단에 배치하면 깔끔합니다)
+        # 다운로드 버튼 배치
         d_col1, d_col2 = st.columns([3, 1])
         with d_col2:
             st.download_button(
@@ -418,7 +425,7 @@ if "analysis_result" in st.session_state:
                 use_container_width=True
             )
 
-        # 화면 출력용 데이터프레임
+        # 화면 출력용 데이터프레임 (천단위 콤마 및 포맷 적용)
         st.dataframe(
             df_res[display_cols],
             column_config={
