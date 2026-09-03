@@ -430,16 +430,24 @@ if "analysis_result" in st.session_state:
             if col in df_res.columns:
                 df_res[col] = pd.to_numeric(df_res[col], errors='coerce')
 
+# [여기에 붙여넣기] 화면에 표를 띄우기 전에 데이터를 먼저 콤마 낀 문자열로 변환합니다.
+        df_display = df_res[display_cols].copy()
+
+        # 시가총액, 현재가, 거래대금에 천 단위 콤마(,) 넣기
+        int_cols = ["시가총액(억)", "현재가(원)", "거래대금(억)"]
+        for col in int_cols:
+            if col in df_display.columns:
+                df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).astype(int).map('{:,}'.format)
+
+        # 수익률 같은 소수점 컬럼 포맷 맞추기
+        float_cols = ["종목수익률(%)", "거래량 비율(%)", "상대강도(%)"]
+        for col in float_cols:
+            if col in df_display.columns:
+                df_display[col] = pd.to_numeric(df_display[col], errors='coerce').fillna(0).map('{:.2f}%'.format)
+
+        # 화면에 출력
         st.dataframe(
-            df_res[display_cols],
-            column_config={
-                "시가총액(억)": st.column_config.NumberColumn("시가총액(억)", format="%d"),
-                "현재가(원)": st.column_config.NumberColumn("현재가(원)", format="%d"),
-                "거래대금(억)": st.column_config.NumberColumn("거래대금(억)", format="%d"),
-                "종목수익률(%)": st.column_config.NumberColumn("종목수익률(%)", format="%.2f%%"),
-                "거래량 비율(%)": st.column_config.NumberColumn("거래량 비율(%)", format="%.1f%%"),
-                "상대강도(%)": st.column_config.NumberColumn("상대강도(%)", format="%.2f%%"),
-            },
+            df_display,
             use_container_width=True
         )
 
