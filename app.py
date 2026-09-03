@@ -781,7 +781,7 @@ if "analysis_result" in st.session_state:
                 for cell in col[1:]:
                     cell.number_format = '#,##0'
 
-    excel_data = output.getvalue()
+   excel_data = output.getvalue()
 
     d_col1, d_col2 = st.columns([3, 1])
     with d_col2:
@@ -812,7 +812,6 @@ if "analysis_result" in st.session_state:
             "상대강도(%)": st.column_config.NumberColumn("상대강도(%)", format="%.2f%%"),
         }
     )
-
 
 
 
